@@ -51,6 +51,18 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "001de0d9-4300-410a-8109-36ce2ce89d3e"
+      }
+    },
+    "owner": "swyomsanjog",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/001de0d9-4300-410a-8109-36ce2ce89d3e"
+    }
   }
 }

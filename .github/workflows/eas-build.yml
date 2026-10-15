@@ -1,0 +1,50 @@
+name: EAS Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS Build Profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+      platform:
+        description: 'Platform'
+        required: true
+        default: 'android'
+        type: choice
+        options:
+          - android
+          - all
+
+jobs:
+  build:
+    name: Build Native App (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Setup Expo / EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run code quality checks
+        run: npm run check
+
+      - name: 🔨 Trigger EAS Build
+        run: eas build --profile ${{ inputs.profile }} --platform ${{ inputs.platform }} --non-interactive
