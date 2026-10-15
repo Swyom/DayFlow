@@ -43,4 +43,4 @@ jobs:
         run: npm test
 
       - name: 🚀 Publish OTA update to Production
-        run: eas update --branch production --message "${{ github.event.head_commit.message || 'Automated update from CI' }}" --non-interactive
+        run: eas update --auto --non-interactive
