@@ -33,8 +33,14 @@ jobs:
       - name: 📥 Install dependencies
         run: npm ci
 
-      - name: 🧪 Run code quality checks (Typecheck, Lint & Tests)
-        run: npm run check
+      - name: 🔍 Typecheck
+        run: npm run typecheck
+
+      - name: 🧹 Lint
+        run: npm run lint
+
+      - name: 🧪 Run Unit Tests
+        run: npm test
 
       - name: 🚀 Publish OTA update to Production
         run: eas update --branch production --message "${{ github.event.head_commit.message || 'Automated update from CI' }}" --non-interactive
