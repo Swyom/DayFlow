@@ -79,18 +79,13 @@ try {
 
   const summary = { user_id: idA, day: '2026-10-16', total_ms: 3_600_000, app_count: 1, platform: 'android', captured_at: new Date().toISOString() };
   check(!(await a.from('screen_time_summaries').upsert(summary, { onConflict: 'user_id,day' })).error, 'A can save a screen-time summary');
-  const usage = { user_id: idA, day: '2026-10-16', package_name: 'com.example.app', app_name: 'Example', usage_ms: 3_600_000 };
-  await a.from('app_usage').upsert(usage, { onConflict: 'user_id,day,package_name' });
-  await a.from('app_usage').upsert({ ...usage, usage_ms: 3_000_000 }, { onConflict: 'user_id,day,package_name' });
-  const { data: apps } = await a.from('app_usage').select('usage_ms');
-  check(apps?.length === 1 && apps[0].usage_ms === 3_000_000, 'app_usage upsert keeps one row per app per day');
 
   const png = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
   check(!(await a.storage.from('avatars').upload(`${idA}/avatar-test.jpg`, png, { contentType: 'image/jpeg' })).error, 'A can upload to its avatar folder');
   check(!!(await a.storage.from('avatars').upload(`${idB}/avatar-evil.jpg`, png, { contentType: 'image/jpeg' })).error, "A can't upload into B's folder");
 
   // ---- Isolation ------------------------------------------------------------------------
-  for (const table of ['profiles', 'daily_steps', 'screen_time_summaries', 'app_usage']) {
+  for (const table of ['profiles', 'daily_steps', 'screen_time_summaries']) {
     const { data } = await b.from(table).select('*');
     check((data ?? []).length === 0, `B can't read A's ${table}`);
     const { data: anonData } = await anon.from(table).select('*');

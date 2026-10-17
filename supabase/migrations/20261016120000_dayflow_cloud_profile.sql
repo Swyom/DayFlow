@@ -138,27 +138,8 @@ create trigger screen_time_summaries_set_updated_at
   before update on public.screen_time_summaries
   for each row execute function public.set_updated_at();
 
-create table if not exists public.app_usage (
-  user_id       uuid not null,
-  day           date not null,
-  package_name  text not null check (char_length(package_name) between 1 and 255),
-  app_name      text not null check (char_length(app_name) between 1 and 255),
-  usage_ms      bigint not null check (usage_ms between 0 and 86400000),
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now(),
-  primary key (user_id, day, package_name),
-  foreign key (user_id, day) references public.screen_time_summaries (user_id, day) on delete cascade
-);
-
-comment on table public.app_usage is 'Foreground time per app per day (part of a screen_time_summaries row).';
-
--- "Top apps for a user over a date range" without scanning every package.
-create index if not exists app_usage_user_day_usage_idx on public.app_usage (user_id, day, usage_ms desc);
-
-drop trigger if exists app_usage_set_updated_at on public.app_usage;
-create trigger app_usage_set_updated_at
-  before update on public.app_usage
-  for each row execute function public.set_updated_at();
+-- app_usage table is retired and kept local on device for maximum privacy.
+drop table if exists public.app_usage cascade;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security: owners only. No policies for the `anon` role at all.
@@ -168,7 +149,6 @@ create trigger app_usage_set_updated_at
 alter table public.profiles enable row level security;
 alter table public.daily_steps enable row level security;
 alter table public.screen_time_summaries enable row level security;
-alter table public.app_usage enable row level security;
 
 -- profiles
 drop policy if exists "profiles: owner can read" on public.profiles;
@@ -221,27 +201,10 @@ drop policy if exists "screen_time_summaries: owner can delete" on public.screen
 create policy "screen_time_summaries: owner can delete" on public.screen_time_summaries
   for delete to authenticated using ((select auth.uid()) = user_id);
 
--- app_usage
-drop policy if exists "app_usage: owner can read" on public.app_usage;
-create policy "app_usage: owner can read" on public.app_usage
-  for select to authenticated using ((select auth.uid()) = user_id);
-
-drop policy if exists "app_usage: owner can insert" on public.app_usage;
-create policy "app_usage: owner can insert" on public.app_usage
-  for insert to authenticated with check ((select auth.uid()) = user_id);
-
-drop policy if exists "app_usage: owner can update" on public.app_usage;
-create policy "app_usage: owner can update" on public.app_usage
-  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
-
-drop policy if exists "app_usage: owner can delete" on public.app_usage;
-create policy "app_usage: owner can delete" on public.app_usage
-  for delete to authenticated using ((select auth.uid()) = user_id);
-
 -- Table privileges: signed-in users only (RLS still applies); nothing for `anon`.
-revoke all on public.profiles, public.daily_steps, public.screen_time_summaries, public.app_usage from anon;
+revoke all on public.profiles, public.daily_steps, public.screen_time_summaries from anon;
 grant select, insert, update, delete
-  on public.profiles, public.daily_steps, public.screen_time_summaries, public.app_usage
+  on public.profiles, public.daily_steps, public.screen_time_summaries
   to authenticated;
 
 -- ---------------------------------------------------------------------------

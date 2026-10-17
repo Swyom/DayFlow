@@ -68,7 +68,7 @@ export async function fetchStepDays(userId: string, fromDay: DateKey): Promise<R
   return (res.data ?? []) as RemoteStepDay[];
 }
 
-/** Replaces one day's screen-time summary and per-app rows. */
+/** Replaces one day's screen-time summary. */
 export async function upsertScreenTime(userId: string, day: DateKey, apps: AppUsage[], platform: 'android' | 'ios') {
   const db = client();
   const totalMs = apps.reduce((sum, a) => sum + a.usageMs, 0);
@@ -83,19 +83,6 @@ export async function upsertScreenTime(userId: string, day: DateKey, apps: AppUs
         captured_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,day' },
-    ),
-  );
-  if (!apps.length) return;
-  check(
-    await db.from('app_usage').upsert(
-      apps.map((a) => ({
-        user_id: userId,
-        day,
-        package_name: a.packageName.slice(0, 255),
-        app_name: (a.appName || a.packageName).slice(0, 255),
-        usage_ms: Math.min(Math.round(a.usageMs), 86_400_000),
-      })),
-      { onConflict: 'user_id,day,package_name' },
     ),
   );
 }
