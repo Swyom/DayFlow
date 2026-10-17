@@ -18,33 +18,85 @@ const check = <T extends { error: unknown }>(res: T): T => {
   return res;
 };
 
+export class DuplicateProfileError extends Error {
+  readonly field: 'email' | 'fullName' | 'both';
+  constructor(field: 'email' | 'fullName' | 'both', message: string) {
+    super(message);
+    this.name = 'DuplicateProfileError';
+    this.field = field;
+  }
+}
+
+export function parseCloudError(err: unknown): Error {
+  if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+    const raw = `${(err as { message?: string }).message || ''} ${(err as { details?: string }).details || ''}`;
+    const emailConflict = /email/i.test(raw);
+    const nameConflict = /name|full_name/i.test(raw);
+    if (emailConflict && nameConflict) {
+      return new DuplicateProfileError('both', 'This name and email are already in use by another profile.');
+    }
+    if (emailConflict) {
+      return new DuplicateProfileError('email', 'This email address is already in use by another profile.');
+    }
+    if (nameConflict) {
+      return new DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
+    }
+    return new DuplicateProfileError('both', 'A profile with these details already exists.');
+  }
+  if (err instanceof Error) return err;
+  return new Error(String(err));
+}
+
 export const isCloudConfigured = () => !!supabase;
 
 export { ensureUserId };
 
+/** Checks whether a full name or email is already taken by another account in Supabase. */
+export async function checkProfileConflicts(
+  fullName: string,
+  email: string,
+  excludeUserId?: string | null,
+): Promise<{ nameTaken: boolean; emailTaken: boolean }> {
+  if (!supabase) return { nameTaken: false, emailTaken: false };
+  try {
+    const res = await client().rpc('check_profile_conflicts', {
+      check_name: fullName.trim(),
+      check_email: email.trim().toLowerCase(),
+      exclude_user_id: excludeUserId || null,
+    });
+    if (res.error) return { nameTaken: false, emailTaken: false };
+    const data = res.data as { name_taken?: boolean; email_taken?: boolean } | null;
+    return {
+      nameTaken: !!data?.name_taken,
+      emailTaken: !!data?.email_taken,
+    };
+  } catch {
+    return { nameTaken: false, emailTaken: false };
+  }
+}
+
 export async function upsertProfile(userId: string, p: Profile) {
-  check(
-    await client()
-      .from('profiles')
-      .upsert(
-        {
-          id: userId,
-          full_name: p.fullName,
-          email: p.email,
-          mobile: p.mobile,
-          age: p.age,
-          location_label: p.location.label,
-          latitude: p.location.latitude,
-          longitude: p.location.longitude,
-          location_source: p.location.source,
-          avatar_path: p.avatarPath,
-          step_goal: p.stepGoal,
-          // Only used on the first insert; the database keeps the original value afterwards.
-          registered_at: p.registeredAt,
-        },
-        { onConflict: 'id' },
-      ),
-  );
+  const res = await client()
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        full_name: p.fullName,
+        email: p.email,
+        mobile: p.mobile,
+        age: p.age,
+        location_label: p.location.label,
+        latitude: p.location.latitude,
+        longitude: p.location.longitude,
+        location_source: p.location.source,
+        avatar_path: p.avatarPath,
+        step_goal: p.stepGoal,
+        // Only used on the first insert; the database keeps the original value afterwards.
+        registered_at: p.registeredAt,
+      },
+      { onConflict: 'id' },
+    );
+  if (res.error) throw parseCloudError(res.error);
 }
 
 /** Fetches the remote profile for the signed-in user if it exists in Supabase. */

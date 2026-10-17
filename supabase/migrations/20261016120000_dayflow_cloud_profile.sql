@@ -62,6 +62,10 @@ create table if not exists public.profiles (
 comment on table public.profiles is 'DayFlow mandatory user profile (one per auth user, strictly validated).';
 comment on column public.profiles.avatar_path is 'Object path in the private avatars bucket: <user id>/<file>.';
 
+-- Uniqueness constraints: prevent duplicate email addresses and duplicate names across accounts
+create unique index if not exists profiles_email_unique on public.profiles (lower(email));
+create unique index if not exists profiles_full_name_unique on public.profiles (lower(btrim(full_name)));
+
 -- registered_at comes from the device (the profile may be created offline) but can't be in
 -- the future; registered_at and created_at are write-once after insert.
 create or replace function public.profiles_check_registration()
@@ -158,6 +162,52 @@ $$;
 
 revoke all on function public.delete_current_user() from public, anon;
 grant execute on function public.delete_current_user() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- check_profile_conflicts: checks if a full name or email is already taken
+-- by another account before/during registration. Returns json { name_taken, email_taken }.
+-- SECURITY DEFINER allows checking availability across accounts without exposing
+-- any private profile rows (which remain protected by RLS).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.check_profile_conflicts(
+  check_name text,
+  check_email text,
+  exclude_user_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  clean_name text := lower(btrim(coalesce(check_name, '')));
+  clean_email text := lower(btrim(coalesce(check_email, '')));
+  has_name boolean := false;
+  has_email boolean := false;
+begin
+  if clean_name <> '' then
+    select exists (
+      select 1 from public.profiles
+      where lower(btrim(full_name)) = clean_name
+        and (exclude_user_id is null or id <> exclude_user_id)
+    ) into has_name;
+  end if;
+
+  if clean_email <> '' then
+    select exists (
+      select 1 from public.profiles
+      where lower(email) = clean_email
+        and (exclude_user_id is null or id <> exclude_user_id)
+    ) into has_email;
+  end if;
+
+  return jsonb_build_object('name_taken', has_name, 'email_taken', has_email);
+end;
+$$;
+
+revoke all on function public.check_profile_conflicts(text, text, uuid) from public;
+grant execute on function public.check_profile_conflicts(text, text, uuid) to authenticated, anon;
 
 -- ---------------------------------------------------------------------------
 -- Storage: private `avatars` bucket. Objects live under "<user id>/...".

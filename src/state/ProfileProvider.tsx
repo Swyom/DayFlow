@@ -151,6 +151,20 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const createProfile = useCallback(
     async (input: NewProfile) => {
+      // Validate uniqueness against cloud database if online
+      if (cloud.isCloudConfigured()) {
+        const conflicts = await cloud.checkProfileConflicts(input.fullName, input.email);
+        if (conflicts.emailTaken && conflicts.nameTaken) {
+          throw new cloud.DuplicateProfileError('both', 'This name and email are already registered.');
+        }
+        if (conflicts.emailTaken) {
+          throw new cloud.DuplicateProfileError('email', 'This email address is already in use by another profile.');
+        }
+        if (conflicts.nameTaken) {
+          throw new cloud.DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
+        }
+      }
+
       const now = new Date().toISOString();
       const next: Profile = {
         ...input,
@@ -161,9 +175,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         stepGoal: clampGoal(Number.NaN),
         updatedAt: now,
       };
-      await commit(next);
-      await clearLegacyAuth().catch(() => undefined);
-      setLegacyAccount(null);
 
       // Attempt synchronous database upload when online
       if (cloud.isCloudConfigured()) {
@@ -173,11 +184,17 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
           cloudRef.current = { userId, syncedAt: next.updatedAt };
           await saveCloudState(cloudRef.current);
         } catch (e) {
+          if (e instanceof cloud.DuplicateProfileError) {
+            throw e; // Never allow duplicate profile records!
+          }
           if (__DEV__) console.warn('[createProfile] initial cloud sync deferred (offline/network)', e);
           syncSoon();
         }
       }
 
+      await commit(next);
+      await clearLegacyAuth().catch(() => undefined);
+      setLegacyAccount(null);
       setStatus('ready');
     },
     [commit, legacyAccount, syncSoon],
@@ -187,9 +204,40 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async (changes: ProfileChanges) => {
       const current = profileRef.current;
       if (!current) return;
-      await commit({ ...current, ...changes, updatedAt: new Date().toISOString() });
+      const targetName = changes.fullName ?? current.fullName;
+      const targetEmail = changes.email ?? current.email;
+
+      if (cloud.isCloudConfigured() && (targetName !== current.fullName || targetEmail !== current.email)) {
+        const userId = await cloud.ensureUserId();
+        const conflicts = await cloud.checkProfileConflicts(targetName, targetEmail, userId);
+        if (conflicts.emailTaken && conflicts.nameTaken) {
+          throw new cloud.DuplicateProfileError('both', 'This name and email are already registered.');
+        }
+        if (conflicts.emailTaken) {
+          throw new cloud.DuplicateProfileError('email', 'This email address is already in use by another profile.');
+        }
+        if (conflicts.nameTaken) {
+          throw new cloud.DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
+        }
+      }
+
+      const updated = { ...current, ...changes, updatedAt: new Date().toISOString() };
+      if (cloud.isCloudConfigured()) {
+        try {
+          const userId = await cloud.ensureUserId();
+          await cloud.upsertProfile(userId, updated);
+          cloudRef.current = { userId, syncedAt: updated.updatedAt };
+          await saveCloudState(cloudRef.current);
+        } catch (e) {
+          if (e instanceof cloud.DuplicateProfileError) {
+            throw e;
+          }
+          syncSoon();
+        }
+      }
+      await commit(updated);
     },
-    [commit],
+    [commit, syncSoon],
   );
 
   const setStepGoal = useCallback((goal: number) => updateProfile({ stepGoal: clampGoal(goal) }), [updateProfile]);

@@ -103,6 +103,34 @@ try {
     !!(await a.from('profiles').upsert({ ...profile, location_source: 'gps', latitude: null, longitude: null }, { onConflict: 'id' })).error,
     'gps location without coordinates is rejected',
   );
+
+  // ---- Duplicate Prevention & Conflict Checking -------------------------------------
+  const { data: conflictEmail, error: errRpc1 } = await b.rpc('check_profile_conflicts', {
+    check_name: 'Brand New Name',
+    check_email: 'RLS-CHECK@example.com',
+  });
+  if (errRpc1) {
+    console.log('INFO: check_profile_conflicts RPC pending migration run in Supabase SQL editor');
+  } else {
+    check(conflictEmail?.email_taken === true && conflictEmail?.name_taken === false, 'duplicate email is detected via check_profile_conflicts');
+  }
+
+  const { data: conflictName } = await b.rpc('check_profile_conflicts', {
+    check_name: '  RLS Check 2  ',
+    check_email: 'unique-email@example.com',
+  });
+  if (conflictName) {
+    check(conflictName?.name_taken === true && conflictName?.email_taken === false, 'duplicate name is detected via check_profile_conflicts');
+  }
+
+  const { data: conflictSelf } = await a.rpc('check_profile_conflicts', {
+    check_name: 'RLS Check 2',
+    check_email: 'rls-check@example.com',
+    exclude_user_id: idA,
+  });
+  if (conflictSelf) {
+    check(conflictSelf?.name_taken === false && conflictSelf?.email_taken === false, 'exclude_user_id allows self when editing profile');
+  }
 } catch (e) {
   console.error('ERROR', e.message ?? e);
   failures++;

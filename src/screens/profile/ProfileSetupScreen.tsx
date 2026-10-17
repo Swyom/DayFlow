@@ -3,15 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { AuthHeader } from '../../components/auth/AuthHeader';
 import { ProfileFields } from '../../components/profile/ProfileFields';
 import { AppText, Button, Screen } from '../../components/ui';
-import {
-  cleanProfileInput,
-  FIELD_LABELS,
-  invalidFields,
-  ProfileErrors,
-  ProfileField,
-  ProfileInput,
-  validateProfile,
-} from '../../domain/profile';
+import { cleanProfileInput, FIELD_LABELS, invalidFields, ProfileErrors, ProfileField, ProfileInput, validateProfile } from '../../domain/profile';
+import { DuplicateProfileError } from '../../services/cloudSync';
 import { useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
 import { notify } from '../../utils/confirm';
@@ -50,6 +43,19 @@ export default function ProfileSetupScreen() {
       // Navigation switches to the app automatically once the profile exists.
     } catch (e) {
       setSaving(false);
+      if (e instanceof DuplicateProfileError) {
+        if (e.field === 'email') {
+          setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
+          notify('Email already registered', 'This email address is already in use by another profile. Please use a different email.');
+        } else if (e.field === 'fullName') {
+          setErrors((prev) => ({ ...prev, fullName: 'This name is already registered.' }));
+          notify('Name already registered', 'This name is already in use by another profile. Please enter a different name.');
+        } else {
+          setErrors((prev) => ({ ...prev, fullName: 'Already registered', email: 'Already in use' }));
+          notify('Already registered', 'This name and email are already in use by another profile. Please choose different details.');
+        }
+        return;
+      }
       const msg = e instanceof Error && e.message ? e.message : 'Please check your connection and storage, then try again.';
       notify('Couldn’t save your profile', msg);
     }
