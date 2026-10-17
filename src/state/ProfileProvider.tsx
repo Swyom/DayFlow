@@ -18,6 +18,7 @@ import {
   setPendingInactivityPurge,
 } from '../services/profileStore';
 import type { CloudState, LegacyAccount, Profile } from '../types/models';
+import { cancelAllNotifications } from '../services/notificationService';
 import { createId } from '../utils/id';
 
 type ProfileStatus = 'loading' | 'needsSetup' | 'ready';
@@ -79,6 +80,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         await cloud.deleteCloudAccount();
       }
       await clearAllUserData(localId);
+      await cancelAllNotifications().catch(() => undefined);
       await setPendingInactivityPurge(false);
       setIsPendingInactivityPurge(false);
       profileRef.current = null;
@@ -403,6 +405,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       await cloud.deleteCloudAccount();
     }
     await clearAllUserData(current.localId);
+    await cancelAllNotifications().catch(() => undefined);
     cloudRef.current = { userId: null, syncedAt: null };
     profileRef.current = null;
     setProfile(null);

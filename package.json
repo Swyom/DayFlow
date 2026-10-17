@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/domain.test.js .test-build/tests/security.test.js .test-build/tests/activity.test.js .test-build/tests/inactivity.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/domain.test.js .test-build/tests/security.test.js .test-build/tests/activity.test.js .test-build/tests/inactivity.test.js .test-build/tests/notifications.test.js",
     "check": "npm run typecheck && npm run lint && npm test",
     "audit:prod": "npm audit --omit=dev"
   },
@@ -28,6 +28,7 @@
     "expo-image-picker": "~17.0.11",
     "expo-location": "~19.0.8",
     "expo-navigation-bar": "~5.0.10",
+    "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8",
     "expo-sensors": "~15.0.8",
     "expo-splash-screen": "~31.0.13",

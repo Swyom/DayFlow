@@ -113,11 +113,21 @@ export function parseUserData(raw: unknown): UserData {
 
 export function parsePreferences(raw: unknown, defaults: Preferences): Preferences {
   const p = isObj(raw) ? raw : {};
+  const notif = isObj(p.notifications) ? p.notifications : {};
+  const dailyTime = typeof notif.dailyReminderTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(notif.dailyReminderTime)
+    ? notif.dailyReminderTime
+    : defaults.notifications.dailyReminderTime;
+
   return {
     appearance: p.appearance === 'light' || p.appearance === 'dark' || p.appearance === 'system' ? p.appearance : defaults.appearance,
     weekStartsOn: p.weekStartsOn === 0 || p.weekStartsOn === 1 ? p.weekStartsOn : defaults.weekStartsOn,
     snakeSpeed: p.snakeSpeed === 'relaxed' || p.snakeSpeed === 'normal' || p.snakeSpeed === 'fast' ? p.snakeSpeed : defaults.snakeSpeed,
     onboardingComplete: typeof p.onboardingComplete === 'boolean' ? p.onboardingComplete : defaults.onboardingComplete,
+    notifications: {
+      enabled: typeof notif.enabled === 'boolean' ? notif.enabled : defaults.notifications.enabled,
+      dailyReminderTime: dailyTime,
+      inactivityAlert: typeof notif.inactivityAlert === 'boolean' ? notif.inactivityAlert : defaults.notifications.inactivityAlert,
+    },
   };
 }
 

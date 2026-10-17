@@ -19,6 +19,7 @@ import { DataProvider, useDataStatus } from '../state/DataProvider';
 import { PreferencesProvider, usePreferences } from '../state/PreferencesProvider';
 import { ProfileProvider, useProfileContext } from '../state/ProfileProvider';
 import { StepsProvider } from '../state/StepsProvider';
+import { NotificationWatcher } from '../components/notifications/NotificationWatcher';
 import { initAds } from '../services/ads';
 import { ThemeProvider, useTheme } from '../theme';
 
@@ -153,6 +154,7 @@ function DataStatusGate({ children, onRetry }: { children: ReactNode; onRetry: (
   return (
     <>
       <SaveErrorWatcher />
+      <NotificationWatcher />
       {children}
     </>
   );

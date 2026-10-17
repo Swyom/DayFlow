@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, Switch, View } from 'react-native';
 import {
   AppText,
   Avatar,
@@ -13,11 +13,13 @@ import {
   SegmentedControl,
   Icon,
 } from '../../components/ui';
+import { useToast } from '../../components/feedback/ToastProvider';
 import { APP_NAME, APP_VERSION } from '../../constants/app';
 import type { RootScreenProps } from '../../navigation/types';
 import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { useData, useDataActions } from '../../state/DataProvider';
 import { usePreferences } from '../../state/PreferencesProvider';
+import { requestNotificationPermission } from '../../services/notificationService';
 import { spacing, useTheme } from '../../theme';
 import type { Preferences } from '../../types/models';
 import { confirm } from '../../utils/confirm';
@@ -29,6 +31,50 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
   const { habits, tasks, snake } = useData();
   const { resetSnakeStats, resetAllData } = useDataActions();
   const { preferences, setPreference } = usePreferences();
+  const toast = useToast();
+  const notifications = preferences.notifications;
+
+  const onToggleDailyReminder = async (nextValue: boolean) => {
+    if (nextValue) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast.show({
+          message: 'Notification permission is required to enable reminders.',
+          tone: 'error',
+        });
+        return;
+      }
+    }
+    setPreference('notifications', {
+      ...notifications,
+      enabled: nextValue,
+    });
+  };
+
+  const onToggleInactivityAlert = async (nextValue: boolean) => {
+    if (nextValue) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast.show({
+          message: 'Notification permission is required to enable safety alerts.',
+          tone: 'error',
+        });
+        return;
+      }
+    }
+    setPreference('notifications', {
+      ...notifications,
+      inactivityAlert: nextValue,
+    });
+  };
+
+  const onChangeReminderTime = (time: string) => {
+    setPreference('notifications', {
+      ...notifications,
+      dailyReminderTime: time,
+    });
+  };
+
   // Asks for typed confirmation on its own screen before anything is deleted.
   const onDeleteAccount = () => navigation.navigate('DeleteAccount');
 
@@ -101,6 +147,64 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
         </Pref>
       </Card>
 
+      <SectionHeader title="Notifications" />
+      <Card padding={spacing.xs}>
+        <ListRow
+          icon="target"
+          title="Daily check-in"
+          subtitle="1 gentle reminder if you have unfinished habits"
+          right={
+            <Switch
+              value={notifications.enabled}
+              onValueChange={onToggleDailyReminder}
+              trackColor={{ false: theme.colors.well, true: theme.colors.primary }}
+              thumbColor={Platform.OS === 'android' ? (notifications.enabled ? theme.colors.surface : theme.colors.textMuted) : undefined}
+            />
+          }
+        />
+        {notifications.enabled ? (
+          <>
+            <View style={styles.timeOptionBox}>
+              <AppText variant="caption" tone="secondary" style={styles.timeLabel}>
+                Check-in time
+              </AppText>
+              <SegmentedControl<string>
+                accessibilityLabel="Check-in time"
+                value={notifications.dailyReminderTime}
+                onChange={onChangeReminderTime}
+                options={[
+                  { value: '19:00', label: '7:00 PM' },
+                  { value: '20:00', label: '8:00 PM' },
+                  { value: '21:00', label: '9:00 PM' },
+                  { value: '21:30', label: '9:30 PM' },
+                ]}
+              />
+            </View>
+            <ListRow
+              icon="sparkles"
+              title="Smart suppression"
+              subtitle="Automatically muted when all habits are completed"
+              value="Active"
+              divider
+            />
+            <ListRow
+              icon="hourglass"
+              title="Account safety alert"
+              subtitle="Alert on Day 5 before 7-day inactivity deletion"
+              right={
+                <Switch
+                  value={notifications.inactivityAlert}
+                  onValueChange={onToggleInactivityAlert}
+                  trackColor={{ false: theme.colors.well, true: theme.colors.primary }}
+                  thumbColor={Platform.OS === 'android' ? (notifications.inactivityAlert ? theme.colors.surface : theme.colors.textMuted) : undefined}
+                />
+              }
+              divider
+            />
+          </>
+        ) : null}
+      </Card>
+
       <SectionHeader title="Data" />
       <Card padding={spacing.xs}>
         <ListRow icon="trophy" title="Achievements" subtitle="Badges you’ve earned" onPress={() => navigation.navigate('Achievements')} />
@@ -144,5 +248,14 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   prefs: { gap: spacing.xl },
   prefLabel: { marginBottom: spacing.sm, marginLeft: spacing.xs },
+  timeOptionBox: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  timeLabel: {
+    marginLeft: spacing.xs,
+  },
   account: { marginTop: spacing.xxxl, gap: spacing.md },
 });

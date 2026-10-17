@@ -10,6 +10,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   weekStartsOn: 1,
   snakeSpeed: 'normal',
   onboardingComplete: false,
+  notifications: {
+    enabled: true,
+    dailyReminderTime: '20:00',
+    inactivityAlert: true,
+  },
 };
 
 type PreferencesContextValue = {

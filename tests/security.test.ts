@@ -58,7 +58,17 @@ describe('stored data parsing', () => {
   });
 
   it('falls back to defaults for invalid preferences', () => {
-    const defaults = { appearance: 'system', weekStartsOn: 1, snakeSpeed: 'normal', onboardingComplete: false } as const;
+    const defaults = {
+      appearance: 'system',
+      weekStartsOn: 1,
+      snakeSpeed: 'normal',
+      onboardingComplete: false,
+      notifications: {
+        enabled: true,
+        dailyReminderTime: '20:00',
+        inactivityAlert: true,
+      },
+    } as const;
     assert.deepEqual(parsePreferences({ appearance: 'neon', weekStartsOn: 3, onboardingComplete: 'yes' }, defaults), defaults);
   });
 

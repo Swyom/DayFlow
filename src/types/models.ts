@@ -118,9 +118,18 @@ export type AppUsage = { packageName: string; appName: string; usageMs: number }
 
 export type SnakeSpeed = 'relaxed' | 'normal' | 'fast';
 
+export type NotificationPreferences = {
+  enabled: boolean;
+  /** Format "HH:mm" in 24-hour time, e.g. "20:00" for 8:00 PM */
+  dailyReminderTime: string;
+  /** Alerts on Day 5 to prevent 7-day automatic account deletion */
+  inactivityAlert: boolean;
+};
+
 export type Preferences = {
   appearance: 'system' | 'light' | 'dark';
   weekStartsOn: 0 | 1;
   snakeSpeed: SnakeSpeed;
   onboardingComplete: boolean;
+  notifications: NotificationPreferences;
 };
