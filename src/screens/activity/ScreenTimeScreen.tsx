@@ -17,9 +17,6 @@ import { formatDuration, formatPercent, OTHER_KEY, spokenDuration, summarizeUsag
 import { useResponsive } from '../../hooks/useResponsive';
 import { useToday } from '../../hooks/useToday';
 import type { RootScreenProps } from '../../navigation/types';
-import { isCloudConfigured } from '../../services/cloudSync';
-import { uploadScreenTimeDays } from '../../services/screenTimeSync';
-import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { radius, spacing, useTheme } from '../../theme';
 import type { AppUsage, DateKey } from '../../types/models';
 import { addDays, fromDateKey, lastNDays } from '../../utils/date';
@@ -54,8 +51,6 @@ export default function ScreenTimeScreen({ navigation }: RootScreenProps<'Screen
   const theme = useTheme();
   const { contentWidth } = useResponsive();
   const today = useToday();
-  const profile = useProfile();
-  const { ensureCloudReady } = useProfileContext();
   const [access, setAccess] = useState<Access>('checking');
   const [range, setRange] = useState<Range>('today');
   const [apps, setApps] = useState<AppUsage[] | null>(null);
@@ -94,19 +89,13 @@ export default function ScreenTimeScreen({ navigation }: RootScreenProps<'Screen
       }
       setApps([...merged.values()]);
       setSelected(null);
-      // Back up the per-day summaries (never blocks the screen).
-      if (isCloudConfigured()) {
-        ensureCloudReady()
-          .then((userId) => uploadScreenTimeDays(profile.localId, userId, perDay, today))
-          .catch((e) => __DEV__ && console.warn('[sync] screen time upload failed', e));
-      }
     } catch {
       setFailed(true);
       checkAccess();
     } finally {
       setLoading(false);
     }
-  }, [range, today, ensureCloudReady, profile.localId, checkAccess]);
+  }, [range, today, checkAccess]);
 
   useEffect(() => {
     if (access === 'granted') void load();

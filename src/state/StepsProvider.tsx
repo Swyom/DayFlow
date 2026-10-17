@@ -65,7 +65,7 @@ type StepsContextValue = {
 const StepsContext = createContext<StepsContextValue | null>(null);
 
 const isAndroid = Platform.OS === 'android';
-const SYNC_DELAY_MS = 15_000;
+const SYNC_DELAY_MS = 60_000; // Batch steps uploads to 1/min to minimize Supabase load
 const LIVE_FLUSH_MS = 3_000;
 /** How far back a restore from the cloud reaches. */
 const RESTORE_DAYS = 90;
