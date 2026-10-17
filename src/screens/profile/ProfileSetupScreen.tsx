@@ -45,10 +45,29 @@ export default function ProfileSetupScreen({ navigation }: RootScreenProps<'Prof
     } catch (e) {
       setSaving(false);
       if (e instanceof DuplicateProfileError) {
-        setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
+        const nextErrors: ProfileErrors = {};
+        const reasons: string[] = [];
+        if (e.conflicts?.nameTaken) {
+          nextErrors.fullName = 'This full name is already registered.';
+          reasons.push('full name');
+        }
+        if (e.conflicts?.emailTaken) {
+          nextErrors.email = 'This email address is already registered.';
+          reasons.push('email address');
+        }
+        if (e.conflicts?.mobileTaken) {
+          nextErrors.mobile = 'This mobile number is already registered.';
+          reasons.push('mobile number');
+        }
+        if (reasons.length === 0) {
+          nextErrors.email = 'Already in use.';
+          reasons.push('details');
+        }
+        setErrors((prev) => ({ ...prev, ...nextErrors }));
+
         notify(
-          'Email already registered',
-          'This email address is already in use by a DayFlow profile. If this is your account, tap "Restore your profile" below to restore it.',
+          'Account already in use',
+          `An account with this ${reasons.join(', ')} is already in use.\n\nIf this is your account, tap "Restore your profile" below to restore it. Otherwise, please use different details.`,
         );
         return;
       }

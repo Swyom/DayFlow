@@ -19,17 +19,50 @@ const check = <T extends { error: unknown }>(res: T): T => {
   return res;
 };
 
-/** The email is already used by another profile (emails are unique; names are not). */
+export type ProfileConflicts = {
+  nameTaken: boolean;
+  emailTaken: boolean;
+  mobileTaken: boolean;
+  conflict: boolean;
+};
+
+/** A field (email, mobile, or name) is already used by an existing profile. */
 export class DuplicateProfileError extends Error {
-  constructor(message = 'This email address is already in use by another profile.') {
+  readonly conflicts?: ProfileConflicts;
+
+  constructor(
+    message = 'An account with this information already exists.',
+    conflicts?: ProfileConflicts,
+  ) {
     super(message);
     this.name = 'DuplicateProfileError';
+    this.conflicts = conflicts;
   }
 }
 
 export function parseCloudError(err: unknown): Error {
   if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
-    return new DuplicateProfileError();
+    const detail = (err as { detail?: string }).detail?.toLowerCase() ?? '';
+    const message = (err as { message?: string }).message?.toLowerCase() ?? '';
+    const text = `${detail} ${message}`;
+    const emailTaken = text.includes('email');
+    const mobileTaken = text.includes('mobile');
+    const nameTaken = text.includes('full_name') || text.includes('name');
+    return new DuplicateProfileError(
+      emailTaken
+        ? 'This email address is already in use by another profile.'
+        : mobileTaken
+          ? 'This mobile number is already in use by another profile.'
+          : nameTaken
+            ? 'This full name is already registered to another profile.'
+            : 'An account with this information already exists.',
+      {
+        emailTaken,
+        mobileTaken,
+        nameTaken,
+        conflict: true,
+      },
+    );
   }
   if (err instanceof Error) return err;
   return new Error(String(err));
@@ -40,24 +73,41 @@ export const isCloudConfigured = () => !!supabase;
 export { ensureUserId };
 
 /**
- * Whether another profile already uses this email. Only signed-in (anonymous) users may ask,
- * and the answer is only "taken or not". If the check can't run, the unique index on the
- * server still rejects a duplicate when the profile is saved.
+ * Checks if the full name, email address, or mobile number is already in use by an existing account.
+ * Signed-in (anonymous) users only.
  */
-export async function isEmailTaken(email: string, excludeUserId?: string | null): Promise<boolean> {
-  if (!supabase) return false;
+export async function checkProfileConflicts(
+  name: string,
+  email: string,
+  mobile: string,
+  excludeUserId?: string | null,
+): Promise<ProfileConflicts> {
+  if (!supabase) return { nameTaken: false, emailTaken: false, mobileTaken: false, conflict: false };
   try {
     await ensureUserId();
     const res = await client().rpc('check_profile_conflicts', {
-      check_name: '',
+      check_name: name.trim(),
       check_email: email.trim().toLowerCase(),
+      check_mobile: mobile.trim(),
       exclude_user_id: excludeUserId || null,
     });
-    if (res.error) return false;
-    return !!(res.data as { email_taken?: boolean } | null)?.email_taken;
+    if (res.error) return { nameTaken: false, emailTaken: false, mobileTaken: false, conflict: false };
+    const data = res.data as { name_taken?: boolean; email_taken?: boolean; mobile_taken?: boolean; conflict?: boolean } | null;
+    return {
+      nameTaken: !!data?.name_taken,
+      emailTaken: !!data?.email_taken,
+      mobileTaken: !!data?.mobile_taken,
+      conflict: !!(data?.conflict ?? (data?.name_taken || data?.email_taken || data?.mobile_taken)),
+    };
   } catch {
-    return false;
+    return { nameTaken: false, emailTaken: false, mobileTaken: false, conflict: false };
   }
+}
+
+/** Whether another profile already uses this email. */
+export async function isEmailTaken(email: string, excludeUserId?: string | null): Promise<boolean> {
+  const conflicts = await checkProfileConflicts('', email, '', excludeUserId);
+  return conflicts.emailTaken;
 }
 
 export async function upsertProfile(userId: string, p: Profile) {

@@ -174,9 +174,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const createProfile = useCallback(
     async (input: NewProfile) => {
-      // Emails are unique across profiles (names are not: many people share a name).
-      if (cloud.isCloudConfigured() && (await cloud.isEmailTaken(input.email))) {
-        throw new cloud.DuplicateProfileError();
+      if (cloud.isCloudConfigured()) {
+        const conflicts = await cloud.checkProfileConflicts(input.fullName, input.email, input.mobile);
+        if (conflicts.conflict) {
+          const parts: string[] = [];
+          if (conflicts.nameTaken) parts.push('full name');
+          if (conflicts.emailTaken) parts.push('email address');
+          if (conflicts.mobileTaken) parts.push('mobile number');
+          throw new cloud.DuplicateProfileError(
+            `An account with this ${parts.join(', ')} already exists.`,
+            conflicts,
+          );
+        }
       }
 
       const now = new Date().toISOString();
@@ -218,10 +227,33 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async (changes: ProfileChanges) => {
       const current = profileRef.current;
       if (!current) return;
+      const targetName = changes.fullName ?? current.fullName;
       const targetEmail = changes.email ?? current.email;
-      if (cloud.isCloudConfigured() && targetEmail !== current.email) {
+      const targetMobile = changes.mobile ?? current.mobile;
+
+      if (
+        cloud.isCloudConfigured() &&
+        (targetName !== current.fullName || targetEmail !== current.email || targetMobile !== current.mobile)
+      ) {
         const userId = await cloud.ensureUserId();
-        if (await cloud.isEmailTaken(targetEmail, userId)) throw new cloud.DuplicateProfileError();
+        const conflicts = await cloud.checkProfileConflicts(
+          targetName !== current.fullName ? targetName : '',
+          targetEmail !== current.email ? targetEmail : '',
+          targetMobile !== current.mobile ? targetMobile : '',
+          userId,
+        );
+        if (conflicts.conflict) {
+          const parts: string[] = [];
+          if (conflicts.nameTaken && targetName !== current.fullName) parts.push('full name');
+          if (conflicts.emailTaken && targetEmail !== current.email) parts.push('email address');
+          if (conflicts.mobileTaken && targetMobile !== current.mobile) parts.push('mobile number');
+          if (parts.length > 0) {
+            throw new cloud.DuplicateProfileError(
+              `An account with this ${parts.join(', ')} already exists.`,
+              conflicts,
+            );
+          }
+        }
       }
 
       const updated = { ...current, ...changes, updatedAt: new Date().toISOString() };

@@ -155,39 +155,115 @@ revoke all on function public.recovery_is_locked(text) from public, anon, authen
 revoke all on function public.recovery_note_failure(text, integer) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- check_profile_conflicts: is this email already used by another profile?
+-- check_profile_conflicts: checks if name, email, or mobile is already in use
 -- ---------------------------------------------------------------------------
+
+create unique index if not exists profiles_mobile_unique
+on public.profiles using btree (
+  (case
+    when length(regexp_replace(mobile, '[^0-9]', '', 'g')) >= 10
+      then right(regexp_replace(mobile, '[^0-9]', '', 'g'), 10)
+    else regexp_replace(mobile, '[^0-9]', '', 'g')
+  end)
+);
 
 create or replace function public.check_profile_conflicts(
   check_name text,
   check_email text,
-  exclude_user_id uuid default null
+  exclude_user_id uuid default null,
+  check_mobile text default ''
 )
 returns jsonb
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public, auth
 as $$
 declare
+  clean_name text := lower(regexp_replace(btrim(coalesce(check_name, '')), '\s+', ' ', 'g'));
   clean_email text := lower(btrim(coalesce(check_email, '')));
+  raw_mobile text := regexp_replace(btrim(coalesce(check_mobile, '')), '[^0-9]', '', 'g');
+  clean_mobile_10 text := case when length(raw_mobile) >= 10 then right(raw_mobile, 10) else raw_mobile end;
+  has_name boolean := false;
   has_email boolean := false;
+  has_mobile boolean := false;
 begin
-  if auth.uid() is null then
+  if auth.uid() is null and current_user not in ('postgres', 'service_role') then
     raise exception 'not signed in' using errcode = '42501';
   end if;
-  if clean_email <> '' then
+
+  -- 1. Check in public.profiles (active accounts)
+  if clean_name != '' then
+    select exists (
+      select 1 from public.profiles
+      where lower(regexp_replace(btrim(full_name), '\s+', ' ', 'g')) = clean_name
+        and (exclude_user_id is null or id != exclude_user_id)
+    ) into has_name;
+  end if;
+
+  if clean_email != '' then
     select exists (
       select 1 from public.profiles
       where lower(email) = clean_email
-        and (exclude_user_id is null or id <> exclude_user_id)
+        and (exclude_user_id is null or id != exclude_user_id)
     ) into has_email;
   end if;
-  return jsonb_build_object('name_taken', false, 'email_taken', has_email);
+
+  if clean_mobile_10 != '' then
+    select exists (
+      select 1 from public.profiles
+      where (
+        (length(regexp_replace(mobile, '[^0-9]', '', 'g')) >= 10 and right(regexp_replace(mobile, '[^0-9]', '', 'g'), 10) = clean_mobile_10)
+        or regexp_replace(mobile, '[^0-9]', '', 'g') = raw_mobile
+      )
+      and (exclude_user_id is null or id != exclude_user_id)
+    ) into has_mobile;
+  end if;
+
+  -- 2. Also check public.deleted_profiles (in 7-day recovery retention)
+  if not has_name and clean_name != '' then
+    select exists (
+      select 1 from public.deleted_profiles
+      where lower(regexp_replace(btrim(full_name), '\s+', ' ', 'g')) = clean_name
+        and purge_after > now()
+        and restored_at is null
+        and (exclude_user_id is null or original_user_id != exclude_user_id)
+    ) into has_name;
+  end if;
+
+  if not has_email and clean_email != '' then
+    select exists (
+      select 1 from public.deleted_profiles
+      where email_norm = clean_email
+        and purge_after > now()
+        and restored_at is null
+        and (exclude_user_id is null or original_user_id != exclude_user_id)
+    ) into has_email;
+  end if;
+
+  if not has_mobile and clean_mobile_10 != '' then
+    select exists (
+      select 1 from public.deleted_profiles
+      where (
+        (length(regexp_replace(mobile, '[^0-9]', '', 'g')) >= 10 and right(regexp_replace(mobile, '[^0-9]', '', 'g'), 10) = clean_mobile_10)
+        or regexp_replace(mobile, '[^0-9]', '', 'g') = raw_mobile
+      )
+      and purge_after > now()
+      and restored_at is null
+      and (exclude_user_id is null or original_user_id != exclude_user_id)
+    ) into has_mobile;
+  end if;
+
+  return jsonb_build_object(
+    'name_taken', has_name,
+    'email_taken', has_email,
+    'mobile_taken', has_mobile,
+    'conflict', (has_name or has_email or has_mobile)
+  );
 end;
 $$;
 
-revoke all on function public.check_profile_conflicts(text, text, uuid) from public, anon;
-grant execute on function public.check_profile_conflicts(text, text, uuid) to authenticated;
+revoke all on function public.check_profile_conflicts(text, text, uuid, text) from public, anon;
+grant execute on function public.check_profile_conflicts(text, text, uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Soft delete: keep the profile 7 days, delete the auth user now

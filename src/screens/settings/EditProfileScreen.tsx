@@ -58,8 +58,29 @@ export default function EditProfileScreen({ navigation }: RootScreenProps<'EditP
     } catch (e) {
       setSaving(false);
       if (e instanceof DuplicateProfileError) {
-        setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
-        notify('Email already registered', 'This email address is already in use by another profile. Please use a different email.');
+        const nextErrors: ProfileErrors = {};
+        const reasons: string[] = [];
+        if (e.conflicts?.nameTaken) {
+          nextErrors.fullName = 'This full name is already registered.';
+          reasons.push('full name');
+        }
+        if (e.conflicts?.emailTaken) {
+          nextErrors.email = 'This email address is already registered.';
+          reasons.push('email address');
+        }
+        if (e.conflicts?.mobileTaken) {
+          nextErrors.mobile = 'This mobile number is already registered.';
+          reasons.push('mobile number');
+        }
+        if (reasons.length === 0) {
+          nextErrors.email = 'Already in use.';
+          reasons.push('details');
+        }
+        setErrors((prev) => ({ ...prev, ...nextErrors }));
+        notify(
+          'Information already in use',
+          `An account with this ${reasons.join(', ')} is already registered in DayFlow. Please choose a different ${reasons.join(' or ')}.`,
+        );
         return;
       }
       notify('Couldn’t save your profile', 'Please try again.');
