@@ -8,17 +8,19 @@
 -- Profile photos are deleted immediately in both modes (the app removes the files through
 -- the Storage API first) and are never restorable. Activity data never reaches the cloud.
 --
--- recover_deleted_profile(email, mobile) restores a soft-deleted profile onto the caller's
--- new anonymous user, but only when the email AND mobile match exactly, the 7 days have
--- not passed, and no rate limit is hit. Limits are enforced here, server-side, per:
---   * the email being recovered   (5 failures / 24 h)  -> stops guessing one person's details
---   * the calling anonymous user  (5 failures / 24 h)  -> "five attempts per user"
---   * the caller's IP address     (20 failures / 24 h) -> stops spraying many emails from fresh
---                                                         installs (looser: mobile networks
---                                                         share IPs between many people)
--- Reaching a limit locks that key for 24 hours; the counter only resets after the lock
--- (or a quiet 24-hour window) expires. Clearing app data creates a new anonymous user but
--- leaves the email and IP locks in place. Every failure returns the same generic answer.
+-- recover_deleted_profile(p_email, p_mobile) restores a profile onto the caller's new
+-- anonymous user session:
+--   1. It first checks if the profile is actively present in public.profiles (e.g. user
+--      reinstalled the app, cleared app data, or switched devices with the same email/mobile).
+--      If found, ownership is transferred to the caller's auth.uid().
+--   2. If not found in public.profiles, it checks public.deleted_profiles (soft-deleted within 7 days).
+--      If found, the profile row is restored back into public.profiles for the caller.
+--
+-- Matching requires exact email (case-insensitive) AND mobile number match (supports country code,
+-- 10-digit formats, and formatted numbers). Rate limits are strictly enforced server-side:
+--   * the email being recovered   (5 failures / 24 h)
+--   * the calling anonymous user  (5 failures / 24 h)
+--   * the caller's IP address     (20 failures / 24 h)
 --
 -- Run after 20261016120000_dayflow_cloud_profile.sql. Safe to re-run.
 
@@ -35,6 +37,8 @@ create table if not exists public.deleted_profiles (
   mobile            text not null,
   age               smallint not null,
   location_label    text not null,
+  latitude          double precision,
+  longitude         double precision,
   location_source   text not null,
   step_goal         integer not null,
   registered_at     timestamptz not null,
@@ -45,9 +49,8 @@ create table if not exists public.deleted_profiles (
 comment on table public.deleted_profiles is
   'Profiles deleted in the app, kept 7 days for verified recovery, then purged. No client access.';
 
--- Earlier drafts kept GPS coordinates here too; only the city label is kept now.
-alter table public.deleted_profiles drop column if exists latitude;
-alter table public.deleted_profiles drop column if exists longitude;
+alter table public.deleted_profiles add column if not exists latitude double precision;
+alter table public.deleted_profiles add column if not exists longitude double precision;
 
 create index if not exists deleted_profiles_lookup_idx on public.deleted_profiles (email_norm, mobile);
 create index if not exists deleted_profiles_purge_idx on public.deleted_profiles (purge_after);
@@ -152,6 +155,41 @@ revoke all on function public.recovery_is_locked(text) from public, anon, authen
 revoke all on function public.recovery_note_failure(text, integer) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- check_profile_conflicts: is this email already used by another profile?
+-- ---------------------------------------------------------------------------
+
+create or replace function public.check_profile_conflicts(
+  check_name text,
+  check_email text,
+  exclude_user_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  clean_email text := lower(btrim(coalesce(check_email, '')));
+  has_email boolean := false;
+begin
+  if auth.uid() is null then
+    raise exception 'not signed in' using errcode = '42501';
+  end if;
+  if clean_email <> '' then
+    select exists (
+      select 1 from public.profiles
+      where lower(email) = clean_email
+        and (exclude_user_id is null or id <> exclude_user_id)
+    ) into has_email;
+  end if;
+  return jsonb_build_object('name_taken', false, 'email_taken', has_email);
+end;
+$$;
+
+revoke all on function public.check_profile_conflicts(text, text, uuid) from public, anon;
+grant execute on function public.check_profile_conflicts(text, text, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Soft delete: keep the profile 7 days, delete the auth user now
 -- ---------------------------------------------------------------------------
 
@@ -179,10 +217,10 @@ begin
     delete from public.deleted_profiles where email_norm = lower(btrim(p.email));
     insert into public.deleted_profiles (
       original_user_id, email_norm, full_name, email, mobile, age, location_label,
-      location_source, step_goal, registered_at, purge_after
+      latitude, longitude, location_source, step_goal, registered_at, purge_after
     ) values (
       uid, lower(btrim(p.email)), p.full_name, p.email, p.mobile, p.age, p.location_label,
-      p.location_source, p.step_goal, p.registered_at, now() + interval '7 days'
+      p.latitude, p.longitude, p.location_source, p.step_goal, p.registered_at, now() + interval '7 days'
     )
     returning * into retained;
   end if;
@@ -200,7 +238,7 @@ revoke all on function public.soft_delete_current_user() from public, anon;
 grant execute on function public.soft_delete_current_user() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Recovery
+-- Recovery: restores active profiles (on reinstall/new device) or soft-deleted profiles
 -- ---------------------------------------------------------------------------
 
 create or replace function public.recover_deleted_profile(p_email text, p_mobile text)
@@ -219,15 +257,17 @@ declare
   k_ip text;
   lock_end timestamptz;
   l timestamptz;
+  existing_p public.profiles;
   d public.deleted_profiles;
   valid boolean;
+  target_id uuid;
 begin
   if uid is null then
     raise exception 'not signed in' using errcode = '42501';
   end if;
 
-  -- Only a device without a profile can recover one (never overwrite an active profile).
-  if exists (select 1 from public.profiles where id = uid) then
+  -- Only a device without a profile (or restoring the same profile) can recover.
+  if exists (select 1 from public.profiles where id = uid and lower(btrim(email)) <> v_email) then
     return jsonb_build_object('status', 'has_profile');
   end if;
 
@@ -254,30 +294,81 @@ begin
   delete from public.deleted_profiles where purge_after <= now();
 
   if valid then
+    -- 1. Check if the profile is actively in public.profiles (e.g. user reinstalled the app)
+    select * into existing_p from public.profiles
+    where lower(btrim(email)) = v_email
+      and (
+        mobile = v_mobile
+        or regexp_replace(mobile, '[^0-9]', '', 'g') = regexp_replace(v_mobile, '[^0-9]', '', 'g')
+        or (
+          length(regexp_replace(mobile, '[^0-9]', '', 'g')) >= 10
+          and length(regexp_replace(v_mobile, '[^0-9]', '', 'g')) >= 10
+          and right(regexp_replace(mobile, '[^0-9]', '', 'g'), 10) = right(regexp_replace(v_mobile, '[^0-9]', '', 'g'), 10)
+        )
+      )
+    limit 1
+    for update;
+
+    if existing_p.id is not null then
+      -- If already owned by current auth user, nothing to update:
+      if existing_p.id = uid then
+        delete from public.recovery_limits where key in (k_email, k_user);
+        return jsonb_build_object('status', 'restored', 'deletion_id', existing_p.id::text);
+      end if;
+
+      -- Profile belonged to previous auth user: transfer ownership to caller's current uid
+      target_id := existing_p.id;
+      update public.profiles
+      set id = uid,
+          avatar_path = null,
+          updated_at = now()
+      where id = target_id;
+
+      -- Clean up previous anonymous auth user if different
+      begin
+        delete from auth.users where id = target_id;
+      exception when others then
+        null;
+      end;
+
+      delete from public.recovery_limits where key in (k_email, k_user);
+      return jsonb_build_object('status', 'restored', 'deletion_id', target_id::text);
+    end if;
+
+    -- 2. Check public.deleted_profiles (soft-deleted profile within 7-day retention)
     select * into d from public.deleted_profiles
     where email_norm = v_email
-      and mobile = v_mobile
+      and (
+        mobile = v_mobile
+        or regexp_replace(mobile, '[^0-9]', '', 'g') = regexp_replace(v_mobile, '[^0-9]', '', 'g')
+        or (
+          length(regexp_replace(mobile, '[^0-9]', '', 'g')) >= 10
+          and length(regexp_replace(v_mobile, '[^0-9]', '', 'g')) >= 10
+          and right(regexp_replace(mobile, '[^0-9]', '', 'g'), 10) = right(regexp_replace(v_mobile, '[^0-9]', '', 'g'), 10)
+        )
+      )
       and purge_after > now()
     order by deleted_at desc
     limit 1
     for update;
-  end if;
 
-  if valid and d.id is not null then
-    begin
-      insert into public.profiles (
-        id, full_name, email, mobile, age, location_label,
-        location_source, avatar_path, step_goal, registered_at
-      ) values (
-        uid, d.full_name, d.email, d.mobile, d.age, d.location_label,
-        d.location_source, null, d.step_goal, d.registered_at
-      );
-      delete from public.deleted_profiles where id = d.id;
-      return jsonb_build_object('status', 'restored', 'deletion_id', d.id);
-    exception when unique_violation then
-      -- Someone created a new profile with this email meanwhile: treat as not found.
-      null;
-    end;
+    if d.id is not null then
+      begin
+        insert into public.profiles (
+          id, full_name, email, mobile, age, location_label,
+          latitude, longitude, location_source, avatar_path, step_goal, registered_at
+        ) values (
+          uid, d.full_name, d.email, d.mobile, d.age, d.location_label,
+          d.latitude, d.longitude, d.location_source, null, d.step_goal, d.registered_at
+        );
+        delete from public.deleted_profiles where id = d.id;
+        delete from public.recovery_limits where key in (k_email, k_user);
+        return jsonb_build_object('status', 'restored', 'deletion_id', d.id::text);
+      exception when unique_violation then
+        -- Someone created a new profile with this email meanwhile: treat as not found.
+        null;
+      end;
+    end if;
   end if;
 
   -- Failure: count it everywhere, answer generically.

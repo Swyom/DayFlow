@@ -123,9 +123,11 @@ try {
 
   r = await recover(b, aEmail, aMobile);
   check(r.data?.status === 'has_profile', 'an active profile is never overwritten', r.data ?? r.error);
-  const { c: c2 } = await anonUser();
+  const { c: c2, id: c2Id } = await anonUser();
   r = await recover(c2, aEmail, aMobile);
-  check(notFound(r), 'a restored deletion cannot be restored again', r.data ?? r.error);
+  check(r.data?.status === 'restored', 'active profile can be claimed by owner on new install', r.data ?? r.error);
+  const { data: c2Profile } = await c2.from('profiles').select('*').eq('id', c2Id).maybeSingle();
+  check(c2Profile?.email === aEmail, 'claimed profile is transferred to new anonymous user', c2Profile);
 
   // ---- 4. Five failures lock the account's email, even across "app restarts" ----------------
   const vEmail = `recovery-v-${tag}@example.com`;

@@ -46,7 +46,10 @@ export default function ProfileSetupScreen({ navigation }: RootScreenProps<'Prof
       setSaving(false);
       if (e instanceof DuplicateProfileError) {
         setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
-        notify('Email already registered', 'This email address is already in use by another profile. Please use a different email.');
+        notify(
+          'Email already registered',
+          'This email address is already in use by a DayFlow profile. If this is your account, tap "Restore your profile" below to restore it.',
+        );
         return;
       }
       const msg = e instanceof Error && e.message ? e.message : 'Please check your connection and storage, then try again.';
@@ -77,7 +80,7 @@ export default function ProfileSetupScreen({ navigation }: RootScreenProps<'Prof
       </View>
       {isCloudConfigured() ? (
         <Button
-          title="Restore a deleted profile"
+          title="Restore your profile"
           icon="refresh"
           variant="ghost"
           size="md"

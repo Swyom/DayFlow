@@ -48,6 +48,8 @@ export default function RecoverProfileScreen({ navigation }: RootScreenProps<'Re
       if (result.status === 'rate_limited') {
         setBlocked(true);
         notify(TITLE, RECOVERY_MESSAGES.rateLimited);
+      } else if (result.status === 'has_profile') {
+        notify(TITLE, 'An active profile already exists on this device.');
       } else {
         notify(TITLE, RECOVERY_MESSAGES.notFound);
       }
@@ -73,8 +75,8 @@ export default function RecoverProfileScreen({ navigation }: RootScreenProps<'Re
       footer={<Button title="Restore profile" icon="refresh" onPress={submit} loading={busy} disabled={blocked} />}
     >
       <AuthHeader
-        title="Restore a deleted profile"
-        subtitle={`Enter the email address and mobile number you used. Profiles can be restored for ${RECOVERY_DAYS} days after they were deleted.`}
+        title="Restore your profile"
+        subtitle="Enter the email address and mobile number you used previously to restore your DayFlow profile."
       />
       <View style={styles.form}>
         <TextField
