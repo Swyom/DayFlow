@@ -7,8 +7,7 @@ import { TabBar } from './TabBar';
 import type { RootStackParamList, TabParamList } from './types';
 
 import OnboardingScreen from '../screens/onboarding/OnboardingScreen';
-import LoginScreen from '../screens/auth/LoginScreen';
-import SignUpScreen from '../screens/auth/SignUpScreen';
+import ProfileSetupScreen from '../screens/profile/ProfileSetupScreen';
 import HomeScreen from '../screens/home/HomeScreen';
 import HabitsScreen from '../screens/habits/HabitsScreen';
 import HabitDetailScreen from '../screens/habits/HabitDetailScreen';
@@ -22,6 +21,8 @@ import AchievementsScreen from '../screens/achievements/AchievementsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import DeleteAccountScreen from '../screens/settings/DeleteAccountScreen';
 import EditProfileScreen from '../screens/settings/EditProfileScreen';
+import StepsScreen from '../screens/activity/StepsScreen';
+import ScreenTimeScreen from '../screens/activity/ScreenTimeScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -54,10 +55,10 @@ function MainTabs() {
 
 /**
  * Screens are chosen by app state (React Navigation's auth-flow pattern), so
- * signing in/out or finishing onboarding swaps the stack with no manual resets
- * and the back button can never return to a screen that no longer applies.
+ * finishing onboarding or the profile swaps the stack with no manual resets and
+ * the back button can never return to a screen that no longer applies.
  */
-export function RootNavigator({ onboarded, signedIn }: { onboarded: boolean; signedIn: boolean }) {
+export function RootNavigator({ onboarded, hasProfile }: { onboarded: boolean; hasProfile: boolean }) {
   const { colors } = useTheme();
   return (
     <Stack.Navigator
@@ -70,11 +71,8 @@ export function RootNavigator({ onboarded, signedIn }: { onboarded: boolean; sig
     >
       {!onboarded ? (
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
-      ) : !signedIn ? (
-        <Stack.Group screenOptions={{ animation: 'fade' }}>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ animation: PUSH }} />
-        </Stack.Group>
+      ) : !hasProfile ? (
+        <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} options={{ animation: 'fade' }} />
       ) : (
         <>
           <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade' }} />
@@ -82,6 +80,8 @@ export function RootNavigator({ onboarded, signedIn }: { onboarded: boolean; sig
           <Stack.Screen name="Snake" component={SnakeScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Achievements" component={AchievementsScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Steps" component={StepsScreen} />
+          <Stack.Screen name="ScreenTime" component={ScreenTimeScreen} />
           <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
             <Stack.Screen name="HabitEditor" component={HabitEditorScreen} />
             <Stack.Screen name="TaskEditor" component={TaskEditorScreen} />

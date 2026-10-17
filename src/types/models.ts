@@ -49,17 +49,71 @@ export type UserData = {
 };
 
 /**
- * Profile record kept in AsyncStorage. The password credential (salted PBKDF2) is
- * stored separately in the OS keystore via expo-secure-store, never here.
+ * Local account written by v2.2 and earlier (email/password log-in). Read once to carry
+ * that user's habits and tasks over to the profile; never written any more.
  */
-export type Account = {
+export type LegacyAccount = {
   id: string;
   name: string;
   email: string;
   createdAt: string;
-  /** Unsalted hash written by v2.1 and earlier; removed on the next successful log-in. */
-  legacyPasswordHash?: string;
 };
+
+export type LocationSource = 'gps' | 'manual';
+
+export type ProfileLocation = {
+  /** Human-readable place, e.g. "Bhubaneswar, Odisha, India". */
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  source: LocationSource;
+};
+
+/** The device owner's profile. Cached in AsyncStorage and backed up to Supabase. */
+export type Profile = {
+  /** Keys this device's habits, tasks and steps in local storage. */
+  localId: string;
+  fullName: string;
+  email: string;
+  /** Digits with an optional leading "+", no spaces. */
+  mobile: string;
+  age: number;
+  location: ProfileLocation;
+  /** ISO time the profile was first created. Never changes. */
+  registeredAt: string;
+  /** Object path in the Supabase `avatars` bucket, or null. */
+  avatarPath: string | null;
+  stepGoal: number;
+  /** ISO time of the last local change (sync compares it with `cloud.syncedAt`). */
+  updatedAt: string;
+};
+
+/** Cloud sync bookkeeping kept next to the profile. */
+export type CloudState = {
+  /** Anonymous Supabase user the data was last written for. */
+  userId: string | null;
+  /** `Profile.updatedAt` of the last successful profile upload. */
+  syncedAt: string | null;
+};
+
+export type StepDay = { steps: number; goal: number };
+
+/** One reading of Android's cumulative step counter (resets to 0 on reboot). */
+export type StepSample = { t: number; counter: number; boot: number };
+
+export type StepsState = {
+  /** Steps per local calendar day. History is kept; a new day simply starts a new key. */
+  days: Record<DateKey, StepDay>;
+  /** Last Android counter reading already accounted for (null on iOS / before the first reading). */
+  lastSample: StepSample | null;
+  /** Days changed since the last successful upload. */
+  unsynced: DateKey[];
+  /** Cloud user the days were uploaded for; a different user means everything is re-uploaded. */
+  cloudUserId: string | null;
+};
+
+/** Foreground time of one app over a period. */
+export type AppUsage = { packageName: string; appName: string; usageMs: number };
 
 export type SnakeSpeed = 'relaxed' | 'normal' | 'fast';
 

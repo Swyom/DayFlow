@@ -15,9 +15,11 @@ import { SAVE_ERROR_MESSAGE } from '../hooks/useCommit';
 import { useAppFonts } from '../hooks/useAppFonts';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootNavigator } from '../navigation/RootNavigator';
-import { AuthProvider, useAuth } from '../state/AuthProvider';
 import { DataProvider, useDataStatus } from '../state/DataProvider';
 import { PreferencesProvider, usePreferences } from '../state/PreferencesProvider';
+import { ProfileProvider, useProfileContext } from '../state/ProfileProvider';
+import { StepsProvider } from '../state/StepsProvider';
+import { initAds } from '../services/ads';
 import { ThemeProvider, useTheme } from '../theme';
 
 // The static native splash stays up until <AnimatedSplash> has drawn an identical
@@ -37,7 +39,7 @@ function AppReady() {
   return null;
 }
 
-/** Provider order: safe area → keyboard → device preferences → theme → toasts → auth → (per-user data). */
+/** Provider order: safe area → keyboard → device preferences → theme → toasts → profile → (per-profile data and steps). */
 export default function AppRoot() {
   const [ready, setReady] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true);
@@ -64,9 +66,9 @@ function ThemedApp() {
     <ThemeProvider preference={preferences.appearance}>
       <SystemBars />
       <ToastProvider>
-        <AuthProvider>
+        <ProfileProvider>
           <AppContent />
-        </AuthProvider>
+        </ProfileProvider>
       </ToastProvider>
     </ThemeProvider>
   );
@@ -86,7 +88,12 @@ function AppContent() {
   const theme = useTheme();
   const fontsReady = useAppFonts();
   const { preferences, status: prefsStatus } = usePreferences();
-  const { status: authStatus, user } = useAuth();
+  const { status: profileStatus, profile } = useProfileContext();
+
+  // Ads start (consent first, then the SDK) only once the person is inside the app.
+  useEffect(() => {
+    if (profile) initAds();
+  }, [profile]);
 
   const navTheme = useMemo<NavTheme>(() => {
     const base = theme.isDark ? DarkTheme : DefaultTheme;
@@ -104,24 +111,26 @@ function AppContent() {
   }, [theme]);
 
   // Still behind the splash.
-  if (!fontsReady || prefsStatus === 'loading' || authStatus === 'loading') return null;
+  if (!fontsReady || prefsStatus === 'loading' || profileStatus === 'loading') return null;
 
   const navigation = (
     <NavigationContainer ref={navigationRef} theme={navTheme}>
-      <RootNavigator onboarded={preferences.onboardingComplete} signedIn={!!user} />
+      <RootNavigator onboarded={preferences.onboardingComplete} hasProfile={!!profile} />
       <AppReady />
     </NavigationContainer>
   );
 
-  return user ? <UserDataGate userId={user.id}>{navigation}</UserDataGate> : navigation;
+  return profile ? <UserDataGate localId={profile.localId}>{navigation}</UserDataGate> : navigation;
 }
 
-/** Loads the signed-in user's data before showing the app; offers retry if storage fails. */
-function UserDataGate({ userId, children }: { userId: string; children: ReactNode }) {
+/** Loads the profile's habits, tasks and steps before showing the app; offers retry if storage fails. */
+function UserDataGate({ localId, children }: { localId: string; children: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   return (
-    <DataProvider key={`${userId}:${attempt}`} userId={userId}>
-      <DataStatusGate onRetry={() => setAttempt((a) => a + 1)}>{children}</DataStatusGate>
+    <DataProvider key={`${localId}:${attempt}`} userId={localId}>
+      <StepsProvider key={localId}>
+        <DataStatusGate onRetry={() => setAttempt((a) => a + 1)}>{children}</DataStatusGate>
+      </StepsProvider>
     </DataProvider>
   );
 }

@@ -1,0 +1,34 @@
+{
+    "logs": [
+        {
+            "outputFile": "expo.modules.dayflowdevice.dayflow-device-release-15:/values-v23/values-v23.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\P Swyom Sanjog\\.gradle\\caches\\8.14.3\\transforms\\4b3c2be286352fc79a49f355e89524ea\\transformed\\work-runtime-2.9.1\\res\\values-v23\\values-v23.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,121",
+                        "endColumns": "65,62",
+                        "endOffsets": "116,179"
+                    }
+                }
+            ]
+        },
+        {
+            "outputFile": "expo.modules.dayflowdevice.dayflow-device-mergeReleaseResources-13:/values-v23/values-v23.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\P Swyom Sanjog\\.gradle\\caches\\8.14.3\\transforms\\4b3c2be286352fc79a49f355e89524ea\\transformed\\work-runtime-2.9.1\\res\\values-v23\\values-v23.xml",
+                    "from": {
+                        "startLines": "2,3",
+                        "startColumns": "4,4",
+                        "startOffsets": "55,121",
+                        "endColumns": "65,62",
+                        "endOffsets": "116,179"
+                    }
+                }
+            ]
+        }
+    ]
+}

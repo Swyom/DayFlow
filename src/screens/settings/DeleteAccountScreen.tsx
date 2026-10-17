@@ -1,32 +1,32 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AppText, Button, Screen, ScreenHeader, TextField } from '../../components/ui';
-import { LIMITS } from '../../constants/limits';
 import type { RootScreenProps } from '../../navigation/types';
-import { AuthError } from '../../services/auth';
-import { useAuth, useCurrentUser } from '../../state/AuthProvider';
+import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
 
-/** Deleting an account is irreversible, so it asks for the password again first. */
+const CONFIRM_WORD = 'DELETE';
+
+/** Deleting the profile is irreversible, so it asks the person to type DELETE first. */
 export default function DeleteAccountScreen({ navigation }: RootScreenProps<'DeleteAccount'>) {
-  const user = useCurrentUser();
-  const { deleteAccount } = useAuth();
-  const [password, setPassword] = useState('');
+  const profile = useProfile();
+  const { deleteProfile } = useProfileContext();
+  const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const submit = async () => {
-    if (!password) {
-      setError('Enter your password to confirm.');
+    if (text.trim().toUpperCase() !== CONFIRM_WORD) {
+      setError(`Type ${CONFIRM_WORD} to confirm.`);
       return;
     }
     setDeleting(true);
     try {
-      await deleteAccount(password);
-      // Navigation switches to the signed-out stack automatically.
-    } catch (e) {
+      await deleteProfile();
+      // Navigation switches to profile setup automatically.
+    } catch {
       setDeleting(false);
-      setError(e instanceof AuthError ? e.message : 'Couldn’t delete your account. Please try again.');
+      setError('Couldn’t delete your cloud data. Check your internet connection and try again. Nothing was deleted.');
     }
   };
 
@@ -34,29 +34,27 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
     <Screen
       keyboard
       edges={['top', 'bottom']}
-      header={<ScreenHeader title="Delete account" onBack={navigation.goBack} backIcon="close" />}
-      footer={<Button title="Delete account" variant="danger" icon="trash-outline" onPress={submit} loading={deleting} />}
+      header={<ScreenHeader title="Delete profile" onBack={navigation.goBack} backIcon="close" />}
+      footer={<Button title="Delete everything" variant="danger" icon="trash-outline" onPress={submit} loading={deleting} />}
     >
       <View style={styles.form}>
         <AppText variant="body" tone="secondary">
-          This permanently deletes {user.email} and all of its habits, tasks and scores from this device. This can’t be
-          undone.
+          This permanently deletes {profile.fullName}’s profile, photo, habits, tasks, scores, step history and screen-time
+          records from this phone and from DayFlow’s cloud. This can’t be undone.
         </AppText>
         <TextField
-          label="Password"
-          icon="lock-closed-outline"
-          placeholder="Your password"
-          secure
-          value={password}
+          label={`Type ${CONFIRM_WORD} to confirm`}
+          icon="warning-outline"
+          placeholder={CONFIRM_WORD}
+          value={text}
           onChangeText={(v) => {
-            setPassword(v);
+            setText(v);
             if (error) setError(null);
           }}
           error={error}
-          maxLength={LIMITS.passwordMax}
-          autoCapitalize="none"
-          autoComplete="current-password"
-          textContentType="password"
+          maxLength={12}
+          autoCapitalize="characters"
+          autoCorrect={false}
           returnKeyType="done"
           onSubmitEditing={submit}
         />

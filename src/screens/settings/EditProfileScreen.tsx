@@ -1,31 +1,62 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { AppText, Avatar, Button, Screen, ScreenHeader, TextField } from '../../components/ui';
+import { AvatarPicker } from '../../components/profile/AvatarPicker';
+import { ProfileFields } from '../../components/profile/ProfileFields';
+import { AppText, Button, Card, Screen, ScreenHeader } from '../../components/ui';
+import {
+  cleanProfileInput,
+  FIELD_LABELS,
+  invalidFields,
+  ProfileErrors,
+  ProfileField,
+  ProfileInput,
+  validateProfile,
+} from '../../domain/profile';
 import { useDiscardGuard } from '../../hooks/useDiscardGuard';
 import type { RootScreenProps } from '../../navigation/types';
-import { useAuth, useCurrentUser } from '../../state/AuthProvider';
+import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
-import { validateName } from '../../utils/validation';
+import type { Profile } from '../../types/models';
+import { notify } from '../../utils/confirm';
+
+const toInput = (p: Profile): ProfileInput => ({
+  fullName: p.fullName,
+  email: p.email,
+  mobile: p.mobile,
+  age: String(p.age),
+  location: p.location,
+});
+
+export function formatRegistered(iso: string) {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
 
 export default function EditProfileScreen({ navigation }: RootScreenProps<'EditProfile'>) {
-  const user = useCurrentUser();
-  const { updateName } = useAuth();
-  const [name, setName] = useState(user.name);
-  const [error, setError] = useState<string | null>(null);
+  const profile = useProfile();
+  const { updateProfile } = useProfileContext();
+  const initial = useMemo(() => toInput(profile), [profile]);
+  const [form, setForm] = useState<ProfileInput>(initial);
+  const [errors, setErrors] = useState<ProfileErrors>({});
   const [saving, setSaving] = useState(false);
-  const exit = useDiscardGuard(name.trim() !== user.name && !saving);
+  const clearError = useCallback((f: ProfileField) => setErrors((e) => (e[f] ? { ...e, [f]: undefined } : e)), []);
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const exit = useDiscardGuard(dirty && !saving);
 
   const save = async () => {
-    const err = validateName(name);
-    setError(err);
-    if (err) return;
+    const next = validateProfile(form);
+    setErrors(next);
+    const missing = invalidFields(next);
+    if (missing.length) {
+      notify('Please complete the form', `Still to fix: ${missing.map((f) => FIELD_LABELS[f]).join(', ')}.`);
+      return;
+    }
     setSaving(true);
     try {
-      await updateName(name);
+      await updateProfile(cleanProfileInput(form));
       exit(() => navigation.goBack());
     } catch {
       setSaving(false);
-      setError('Couldn’t save your name. Please try again.');
+      notify('Couldn’t save your profile', 'Please try again.');
     }
   };
 
@@ -34,40 +65,25 @@ export default function EditProfileScreen({ navigation }: RootScreenProps<'EditP
       keyboard
       edges={['top', 'bottom']}
       header={<ScreenHeader title="Edit profile" onBack={navigation.goBack} backIcon="close" />}
-      footer={<Button title="Save" icon="checkmark" onPress={save} loading={saving} />}
+      footer={<Button title="Save" icon="checkmark" onPress={save} loading={saving} disabled={!dirty} />}
     >
-      <View style={styles.avatar}>
-        <Avatar name={name || user.name} size={88} />
-      </View>
-      <View style={styles.form}>
-        <TextField
-          label="Name"
-          icon="person-outline"
-          value={name}
-          onChangeText={(v) => {
-            setName(v);
-            if (error) setError(null);
-          }}
-          error={error}
-          maxLength={40}
-          autoCapitalize="words"
-          autoComplete="name"
-          returnKeyType="done"
-          onSubmitEditing={save}
-        />
+      <AvatarPicker name={form.fullName || profile.fullName} />
+      <ProfileFields value={form} onChange={setForm} errors={errors} onClearError={clearError} />
+      <Card style={styles.meta} elevation="insetSm">
+        <AppText variant="label" tone="secondary">
+          Registered
+        </AppText>
         <View>
-          <TextField label="Email" icon="mail-outline" value={user.email} editable={false} />
-          <AppText variant="caption" tone="secondary" style={styles.note}>
-            Your email identifies this profile on the device and can’t be changed.
+          <AppText variant="bodyStrong">{formatRegistered(profile.registeredAt)}</AppText>
+          <AppText variant="caption" tone="secondary">
+            Recorded automatically when you created your profile.
           </AppText>
         </View>
-      </View>
+      </Card>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  avatar: { alignItems: 'center', marginVertical: spacing.xl },
-  form: { gap: spacing.xl },
-  note: { marginTop: spacing.sm, marginLeft: spacing.xs },
+  meta: { marginTop: spacing.xxl, gap: spacing.xs },
 });

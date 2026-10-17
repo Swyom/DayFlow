@@ -1,70 +1,19 @@
 /**
- * Tests for the security-sensitive pure logic: password hashing, log-in lock-out,
- * input limits and validation of data read back from storage.
+ * Tests for the security-sensitive pure logic: input limits and validation of data
+ * read back from storage (including the profile and the old log-in accounts).
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { LIMITS } from '../src/constants/limits';
-import { FREE_ATTEMPTS, lockRemaining, NO_ATTEMPTS, recordFailure } from '../src/services/loginThrottle';
-import { constantTimeEqual, createCredential, isPasswordCredential, needsRehash, verifyCredential } from '../src/services/passwordHash';
 import { dataReducer, EMPTY_DATA } from '../src/state/dataReducer';
-import { parseAccounts, parsePreferences, parseUserData } from '../src/state/schema';
-import { validateEmail, validatePassword } from '../src/utils/validation';
-
-const salt = (n: number) => Uint8Array.from({ length: 16 }, (_, i) => (i * 7 + n) & 0xff);
-
-describe('password hashing', () => {
-  it('verifies the right password and rejects others', async () => {
-    const cred = await createCredential('correct horse battery', salt(1), 2000);
-    assert.ok(isPasswordCredential(cred));
-    assert.equal(await verifyCredential('correct horse battery', cred), true);
-    assert.equal(await verifyCredential('correct horse batterY', cred), false);
-    assert.equal(await verifyCredential('', cred), false);
-  });
-
-  it('salts every credential, so equal passwords hash differently', async () => {
-    const a = await createCredential('same password', salt(1), 2000);
-    const b = await createCredential('same password', salt(2), 2000);
-    assert.notEqual(a.hash, b.hash);
-  });
-
-  it('flags credentials below the current work factor for re-hashing', async () => {
-    assert.equal(needsRehash(await createCredential('pw-pw-pw-pw', salt(3), 2000)), true);
-  });
-
-  it('rejects malformed stored credentials', () => {
-    assert.equal(isPasswordCredential(null), false);
-    assert.equal(isPasswordCredential({ v: 2, algo: 'pbkdf2-sha256', iterations: 1, salt: 'aa', hash: 'bb' }), false);
-  });
-
-  it('compares strings without depending on where they differ', () => {
-    assert.equal(constantTimeEqual('abc', 'abc'), true);
-    assert.equal(constantTimeEqual('abc', 'abd'), false);
-    assert.equal(constantTimeEqual('abc', 'abcd'), false);
-  });
-});
-
-describe('log-in lock-out', () => {
-  it('allows a few attempts, then locks with growing delays', () => {
-    let s = NO_ATTEMPTS;
-    for (let i = 1; i < FREE_ATTEMPTS; i++) {
-      s = recordFailure(s, 0);
-      assert.equal(lockRemaining(s, 0), 0, `attempt ${i} is free`);
-    }
-    s = recordFailure(s, 0);
-    const first = lockRemaining(s, 0);
-    assert.ok(first > 0);
-    s = recordFailure(s, 0);
-    assert.ok(lockRemaining(s, 0) > first, 'each further failure locks longer');
-    assert.equal(lockRemaining(s, 60 * 60_000), 0, 'locks expire');
-  });
-});
+import { parseLegacyAccounts, parsePreferences, parseProfile, parseStepsState, parseUserData } from '../src/state/schema';
+import { validateEmail } from '../src/utils/validation';
 
 describe('input validation', () => {
-  it('rejects oversized emails and passwords', () => {
+  it('rejects oversized and malformed emails', () => {
     assert.ok(validateEmail(`${'a'.repeat(LIMITS.email)}@example.com`));
-    assert.ok(validatePassword('x'.repeat(LIMITS.passwordMax + 1)));
-    assert.equal(validatePassword('x'.repeat(LIMITS.passwordMin)), null);
+    assert.ok(validateEmail('not-an-email'));
+    assert.equal(validateEmail('asha@example.com'), null);
   });
 
   it('clamps values in the reducer even if a form is bypassed', () => {
@@ -113,10 +62,50 @@ describe('stored data parsing', () => {
     assert.deepEqual(parsePreferences({ appearance: 'neon', weekStartsOn: 3, onboardingComplete: 'yes' }, defaults), defaults);
   });
 
-  it('keeps a legacy password hash only for migration and never exposes it as passwordHash', () => {
-    const [a] = parseAccounts([{ id: 'u_1', name: 'Sam', email: ' Sam@Example.com ', passwordHash: 'abc', createdAt: '2026-01-01T00:00:00Z' }]);
+  it('reads old log-in accounts without keeping any password data', () => {
+    const [a] = parseLegacyAccounts([{ id: 'u_1', name: 'Sam', email: ' Sam@Example.com ', passwordHash: 'abc', createdAt: '2026-01-01T00:00:00Z' }]);
     assert.equal(a.email, 'sam@example.com');
-    assert.equal(a.legacyPasswordHash, 'abc');
     assert.equal('passwordHash' in a, false);
+    assert.equal('legacyPasswordHash' in a, false);
+  });
+
+  it('accepts a valid stored profile and rejects incomplete ones', () => {
+    const good = {
+      localId: 'u_1',
+      fullName: 'Asha Patnaik',
+      email: 'ASHA@example.com',
+      mobile: '+919876543210',
+      age: 29,
+      location: { label: 'Bhubaneswar, Odisha, India', latitude: 20.29, longitude: 85.82, source: 'gps' },
+      registeredAt: '2026-10-16T10:00:00.000Z',
+      avatarPath: '0b5c1a7e-1111-2222-3333-444455556666/avatar-1.jpg',
+      stepGoal: 9000,
+      updatedAt: '2026-10-16T10:00:00.000Z',
+    };
+    const p = parseProfile(good);
+    assert.ok(p);
+    assert.equal(p.email, 'asha@example.com');
+    assert.equal(p.location.source, 'gps');
+    for (const key of ['fullName', 'email', 'mobile', 'age', 'location', 'registeredAt'] as const) {
+      assert.equal(parseProfile({ ...good, [key]: undefined }), null, `missing ${key}`);
+    }
+    assert.equal(parseProfile({ ...good, age: 5 }), null, 'too young');
+    assert.equal(parseProfile({ ...good, avatarPath: '../../etc/passwd' })?.avatarPath, null);
+    assert.equal(parseProfile({ ...good, location: { ...good.location, latitude: 999 } })?.location.source, 'manual');
+    assert.equal(parseProfile({ ...good, stepGoal: 10 })?.stepGoal, LIMITS.stepGoalMin);
+  });
+
+  it('cleans stored step history', () => {
+    const s = parseStepsState({
+      days: { '2026-10-15': { steps: 5000, goal: 8000 }, bogus: { steps: 1 }, '2026-10-16': { steps: -4, goal: 1 } },
+      unsynced: ['2026-10-15', '2026-10-15', 'nope', '2026-01-01'],
+      lastSample: { t: 1, counter: 10, boot: 2 },
+      cloudUserId: 'not-a-uuid',
+    });
+    assert.deepEqual(Object.keys(s.days).sort(), ['2026-10-15', '2026-10-16']);
+    assert.equal(s.days['2026-10-16'].steps, 0);
+    assert.equal(s.days['2026-10-16'].goal, LIMITS.stepGoalMin);
+    assert.deepEqual(s.unsynced, ['2026-10-15']);
+    assert.equal(s.cloudUserId, null);
   });
 });

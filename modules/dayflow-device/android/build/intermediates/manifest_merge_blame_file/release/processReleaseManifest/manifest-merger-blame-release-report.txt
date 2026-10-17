@@ -1,0 +1,39 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    xmlns:tools="http://schemas.android.com/tools"
+4    package="expo.modules.dayflowdevice" >
+5
+6    <uses-sdk android:minSdkVersion="24" />
+7
+8    <!-- Step counter sensor (runtime permission on Android 10+). -->
+9    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+9-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:5:3-77
+9-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:5:20-74
+10
+11    <!-- Screen time: granted by the user in Settings → Usage access, never automatically. -->
+12    <uses-permission
+12-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:8:3-10:43
+13        android:name="android.permission.PACKAGE_USAGE_STATS"
+13-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:9:5-58
+14        tools:ignore="ProtectedPermissions" />
+14-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:10:5-40
+15
+16    <!--
+17       Lets usage stats show app names for launchable apps (Android 11+ package visibility)
+18       without the broad QUERY_ALL_PACKAGES permission.
+19    -->
+20    <queries>
+20-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:14:3-19:13
+21        <intent>
+21-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:15:5-18:14
+22            <action android:name="android.intent.action.MAIN" />
+22-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:16:7-59
+22-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:16:15-56
+23
+24            <category android:name="android.intent.category.LAUNCHER" />
+24-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:17:7-67
+24-->E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:17:17-64
+25        </intent>
+26    </queries>
+27
+28</manifest>

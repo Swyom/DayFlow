@@ -5,18 +5,30 @@ Expo (SDK 54), React Native and TypeScript.
 
 ## How the app works
 
-- **Fully offline.** There is no server and no network access. Everything is saved on the phone.
-- **Local accounts.** Each person creates a profile on the device (name, email, password). Every
-  profile has its own habits, tasks, scores and achievements, kept separate from the others.
-- **Saving.** Every change updates the screen instantly and is saved in the background
-  (AsyncStorage). Saves are queued so they can never overwrite each other. If a save fails, the
-  app shows a **Retry** message and nothing is lost.
-- **Security.**
-  - Passwords are hashed with salted PBKDF2-SHA256 and stored, with the login session, in the
-    phone's secure keystore (Keychain / Android Keystore).
-  - Repeated wrong passwords trigger a growing lock-out.
-  - Deleting an account asks for the password again.
-  - Data loaded from storage is validated before use, so damaged data can't crash the app.
+- **Profile instead of log-in.** On first launch (after onboarding) you fill in your full name,
+  email, mobile number, age and location. Every field is required: the app can't be entered until
+  the form is complete, and an alert lists anything still missing. Location is detected with the
+  phone's location service after you allow it, or typed in by hand if you don't. The registration
+  date and time are recorded automatically and never change.
+- **Local first, backed up to Supabase.** Habits, tasks and Snake scores stay on the phone
+  (AsyncStorage). The profile, profile photo, daily steps and goals, and screen-time summaries are
+  also saved to Supabase so they're backed up. The app always opens from the local copy, so it works
+  offline and syncs when it's back online. Every upload is an upsert on the table's primary key, so
+  retries never create duplicate rows.
+- **Identity and security.** There's no visible log-in. On first sync, the app silently signs in
+  as an **anonymous Supabase Auth user**. Every table and the photo bucket use **Row Level
+  Security**, so a device can only read and write its own rows. The app ships only the public
+  anon key. The service-role key is never used.
+- **Steps.** Uses the phone's step sensor. On Android, a small native module reads the hardware
+  step counter while the app is open and about every 15 minutes in the background (WorkManager),
+  so steps are counted even when the app is closed. On iPhone, the counts come from CoreMotion.
+  Today's count resets at local midnight; earlier days are kept as history.
+- **Screen time (Android).** Reads Android's usage stats after you turn on *Usage access* for
+  DayFlow in Settings, and shows time per app in an interactive doughnut chart. iOS doesn't let apps
+  read other apps' usage, so the iPhone screen explains this instead. The app never shows estimated
+  or sample data.
+- **Ads.** One clearly labelled AdMob banner on the Home screen, inside the scrolling content and
+  away from the tab bar and buttons. Test ads are used until you switch to your real ad units.
 - **Startup.** An animated splash screen plays while fonts, settings and your data load, then
   reveals the app once everything is ready.
 - **Themes.** Light mode uses a soft "neumorphic" style; dark mode uses tonal surfaces (lighter
@@ -24,8 +36,12 @@ Expo (SDK 54), React Native and TypeScript.
 
 ## Features
 
-- **Today:** daily progress ring, today's habits with one-tap check-ins, tasks due and overdue,
-  quick actions and a shortcut to Snake.
+- **Today:** daily progress ring, step count, a shortcut to screen time, today's habits with
+  one-tap check-ins, tasks due and overdue, quick actions, an ad slot and a shortcut to Snake.
+- **Steps:** progress ring, distance and calorie estimates, an editable daily goal (presets or
+  ±500 steps), a 7-day chart and day-by-day history. Each day keeps the goal it had.
+- **Screen time:** Today / Yesterday / 7 days; a doughnut chart of the top apps (tap a section or
+  legend row for the app's name, time and share); a full list with hours, minutes and percentages.
 - **Habits:** create, edit and delete; icon and colour; daily goal (e.g. 8 glasses); weekday
   schedule; notes. A seven-day strip lets you view or fill in past days. Each habit shows current
   and best streak, a 30-day completion rate and a six-week history calendar.
@@ -34,12 +50,57 @@ Expo (SDK 54), React Native and TypeScript.
 - **Progress:** 7-day and 4-week views with bar chart and heatmap, tasks per day and a per-habit
   breakdown.
 - **Achievements:** 12 badges earned from your habits, tasks and Snake scores.
-- **Snake:** 15×15 board, swipe or arrow pad, three speeds, pause and resume (pauses on its own
-  when you leave), best score and games played.
-- **Settings:** edit profile, theme (System / Light / Dark), week start, Snake speed, reset Snake
-  scores, erase habits and tasks, log out and delete account.
-- **Polish:** works on small phones to tablets, respects system font size and "reduce motion",
-  and asks before discarding unsaved changes or anything destructive.
+- **Snake:** 15×15 board, swipe or arrow pad, three speeds (chosen on the Games tab), pause and
+  resume, best score and games played.
+- **Settings:** edit profile (all fields, plus add, change or remove a profile photo), theme, week
+  start, reset Snake scores, erase habits and tasks, and delete the profile with all its data (on
+  the phone and in Supabase).
+- **Upgrading from v2.1:** the old email/password accounts are gone. The account that was signed
+  in keeps its habits, tasks and scores, and its name and email are pre-filled in the profile form.
+  Old password hashes are deleted.
+
+## Setup
+
+### 1. Environment variables
+
+Copy `.env.example` to `.env` and fill it in (`.env` is gitignored). Only public values go there:
+
+| Variable | Value |
+| --- | --- |
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the **anon / publishable** key (never the service_role key) |
+| `EXPO_PUBLIC_ADMOB_TEST_MODE` | `true` until AdMob is approved, then `false` |
+| `EXPO_PUBLIC_ADMOB_BANNER_ID_ANDROID` / `_IOS` | your banner ad unit IDs |
+| `ADMOB_APP_ID_ANDROID` / `_IOS` | your AdMob app IDs (empty = Google's sample IDs) |
+
+`EXPO_PUBLIC_*` values are compiled into the app. The anon key is designed to be public: RLS is
+what protects the data.
+
+For EAS cloud builds and OTA updates, `.env` isn't uploaded. Create the same variables as EAS
+environment variables for the `preview` and `production` environments (`eas env:create`, or the
+Expo dashboard). `eas.json` and the update workflow already use those environments.
+
+### 2. Supabase
+
+1. Run `supabase/migrations/20261016120000_dayflow_cloud_profile.sql`. Either paste it into the
+   SQL editor, or run `supabase link` and then `supabase db push`. It creates the `profiles`,
+   `daily_steps`, `screen_time_summaries` and `app_usage` tables (with constraints, indexes and
+   `updated_at` triggers), RLS policies, the private `avatars` storage bucket and its policies, and
+   `delete_current_user()` for account deletion. It's safe to run again.
+2. **Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins".** Without this the
+   app works offline but can't sync.
+3. Recommended: turn on CAPTCHA or keep the default rate limits for anonymous sign-ins to limit
+   abuse.
+4. Check the setup: `node --env-file=.env scripts/supabase/verify-cloud.mjs`. It creates two
+   temporary anonymous users, tests saving, upserts, constraints and that neither user can read or
+   change the other's rows or photos, then deletes both users.
+
+### 3. AdMob
+
+Test ads work with no setup. For real ads, create the app and a banner unit in AdMob, set up the
+consent (GDPR) message under **Privacy & messaging**, put the IDs in the environment variables
+above, set `EXPO_PUBLIC_ADMOB_TEST_MODE=false` for production, and build again. Changing app IDs
+needs a new native build (an OTA update isn't enough).
 
 ## Installation
 
@@ -51,14 +112,9 @@ cd dayflow
 npm install
 ```
 
-Run in development (scan the QR code with Expo Go, or press `a` for Android / `i` for iOS):
-
-```bash
-npx expo start
-```
-
-Run as a development build on a connected device or emulator (needed for the app icon and
-native splash screen):
+DayFlow includes native code (the step-counter and usage-stats module in `modules/dayflow-device`,
+AdMob, sensors), so **it doesn't run in Expo Go**. Run it as a development build on a connected
+device or emulator:
 
 ```bash
 npx expo run:android

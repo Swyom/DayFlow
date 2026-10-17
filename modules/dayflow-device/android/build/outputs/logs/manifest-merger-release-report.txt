@@ -1,0 +1,40 @@
+-- Merging decision tree log ---
+manifest
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:1:1-20:12
+INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:1:1-20:12
+	package
+		INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml
+	xmlns:tools
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:2:3-49
+	xmlns:android
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:1:11-69
+uses-permission#android.permission.ACTIVITY_RECOGNITION
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:5:3-77
+	android:name
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:5:20-74
+uses-permission#android.permission.PACKAGE_USAGE_STATS
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:8:3-10:43
+	tools:ignore
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:10:5-40
+	android:name
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:9:5-58
+queries
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:14:3-19:13
+intent#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:15:5-18:14
+action#android.intent.action.MAIN
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:16:7-59
+	android:name
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:16:15-56
+category#android.intent.category.LAUNCHER
+ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:17:7-67
+	android:name
+		ADDED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml:17:17-64
+uses-sdk
+INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml
+INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from E:\dayflow\modules\dayflow-device\android\src\main\AndroidManifest.xml

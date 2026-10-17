@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { HomeBannerAd } from '../../components/ads/HomeBannerAd';
 import { HabitRow } from '../../components/habits/HabitRow';
 import { TodayProgressCard } from '../../components/home/TodayProgressCard';
 import { CelebrateIllustration, GrowthIllustration } from '../../components/illustrations';
@@ -23,7 +24,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useTaskToggle } from '../../hooks/useTaskToggle';
 import { useToday } from '../../hooks/useToday';
 import type { TabScreenProps } from '../../navigation/types';
-import { useCurrentUser } from '../../state/AuthProvider';
+import { useProfile } from '../../state/ProfileProvider';
 import { useData } from '../../state/DataProvider';
 import { radius, spacing, useTheme } from '../../theme';
 import type { Habit, Task } from '../../types/models';
@@ -35,13 +36,13 @@ const MAX_TASKS = 3;
 export default function HomeScreen({ navigation }: TabScreenProps<'Home'>) {
   const theme = useTheme();
   const today = useToday();
-  const user = useCurrentUser();
+  const profile = useProfile();
   const { illustration, compact, largeText } = useResponsive();
   const { habits, snake } = useData();
   const logHabit = useHabitLogger();
   const toggleTask = useTaskToggle();
   const summary = useDailySummary(today);
-  const firstName = user.name.split(' ')[0];
+  const firstName = profile.fullName.split(' ')[0];
 
   const openHabit = useCallback((h: Habit) => navigation.navigate('HabitDetail', { habitId: h.id }), [navigation]);
   const openTask = useCallback((t: Task) => navigation.navigate('TaskEditor', { taskId: t.id }), [navigation]);
@@ -132,6 +133,9 @@ export default function HomeScreen({ navigation }: TabScreenProps<'Home'>) {
           ) : null}
         </View>
       )}
+
+      {/* Sponsored: clearly labelled and kept away from the tab bar and primary actions. */}
+      <HomeBannerAd />
 
       {/* Break */}
       <SectionHeader title="Take a break" />

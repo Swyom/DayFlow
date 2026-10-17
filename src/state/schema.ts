@@ -1,7 +1,24 @@
 import { toHabitIcon } from '../constants/habits';
 import { LIMITS } from '../constants/limits';
 import { toAccentHue } from '../theme/palette';
-import type { Account, DateKey, Habit, Preferences, Priority, SnakeStats, Task, UserData, Weekday } from '../types/models';
+import { clampGoal } from '../domain/steps';
+import type {
+  CloudState,
+  DateKey,
+  Habit,
+  LegacyAccount,
+  LocationSource,
+  Preferences,
+  Priority,
+  Profile,
+  SnakeStats,
+  StepDay,
+  StepSample,
+  StepsState,
+  Task,
+  UserData,
+  Weekday,
+} from '../types/models';
 
 /**
  * Parsers for everything read back from device storage. Storage can be damaged or
@@ -103,24 +120,86 @@ export function parsePreferences(raw: unknown, defaults: Preferences): Preferenc
   };
 }
 
-export function parseAccounts(raw: unknown): Account[] {
+/** Accounts from the old email/password log-in (only id, name and email are still used). */
+export function parseLegacyAccounts(raw: unknown): LegacyAccount[] {
   return uniqueById(
-    list(raw, 100).map((a): Account | null => {
+    list(raw, 100).map((a): LegacyAccount | null => {
       if (!isObj(a)) return null;
       const accountId = id(a.id);
       const email = str(a.email, LIMITS.email).trim().toLowerCase();
       if (!accountId || !email) return null;
-      const account: Account = {
+      return {
         id: accountId,
-        name: str(a.name, LIMITS.name).trim() || email,
+        name: str(a.name, LIMITS.name).trim(),
         email,
         createdAt: isoTime(a.createdAt) ?? new Date(0).toISOString(),
       };
-      // v2.1 stored a fast hash here (as `passwordHash`); it is only kept until the
-      // next successful log-in, which moves the account to a salted PBKDF2 credential.
-      const legacy = a.legacyPasswordHash ?? a.passwordHash;
-      if (typeof legacy === 'string') account.legacyPasswordHash = legacy.slice(0, 64);
-      return account;
     }),
   );
+}
+
+const finite = (v: unknown, min: number, max: number): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : null;
+
+/** The stored profile, or null if it is missing or unusable (the user is asked to set it up again). */
+export function parseProfile(raw: unknown): Profile | null {
+  if (!isObj(raw)) return null;
+  const localId = id(raw.localId);
+  const fullName = str(raw.fullName, LIMITS.fullName).trim();
+  const email = str(raw.email, LIMITS.email).trim().toLowerCase();
+  const mobile = str(raw.mobile, LIMITS.mobileInput).trim();
+  const age = finite(raw.age, LIMITS.ageMin, LIMITS.ageMax);
+  const registeredAt = isoTime(raw.registeredAt);
+  const loc = isObj(raw.location) ? raw.location : null;
+  const label = loc ? str(loc.label, LIMITS.location).trim() : '';
+  if (!localId || !fullName || !email || !/^\+?\d{7,15}$/.test(mobile) || age === null || !registeredAt || !loc || !label) {
+    return null;
+  }
+  const latitude = finite(loc.latitude, -90, 90);
+  const longitude = finite(loc.longitude, -180, 180);
+  const hasCoords = latitude !== null && longitude !== null;
+  const source: LocationSource = loc.source === 'gps' && hasCoords ? 'gps' : 'manual';
+  const avatarPath = typeof raw.avatarPath === 'string' && /^[\w-]+\/[\w.-]{1,200}$/.test(raw.avatarPath) ? raw.avatarPath : null;
+  return {
+    localId,
+    fullName,
+    email,
+    mobile,
+    age: Math.round(age),
+    location: { label, latitude: hasCoords ? latitude : null, longitude: hasCoords ? longitude : null, source },
+    registeredAt,
+    avatarPath,
+    stepGoal: clampGoal(typeof raw.stepGoal === 'number' ? raw.stepGoal : LIMITS.stepGoalDefault),
+    updatedAt: isoTime(raw.updatedAt) ?? registeredAt,
+  };
+}
+
+export function parseCloudState(raw: unknown): CloudState {
+  const c = isObj(raw) ? raw : {};
+  return {
+    userId: typeof c.userId === 'string' && /^[0-9a-f-]{36}$/i.test(c.userId) ? c.userId : null,
+    syncedAt: isoTime(c.syncedAt),
+  };
+}
+
+function parseSample(raw: unknown): StepSample | null {
+  if (!isObj(raw)) return null;
+  const t = finite(raw.t, 0, Number.MAX_SAFE_INTEGER);
+  const counter = finite(raw.counter, 0, Number.MAX_SAFE_INTEGER);
+  const boot = finite(raw.boot, -1, Number.MAX_SAFE_INTEGER);
+  return t !== null && counter !== null && boot !== null ? { t, counter, boot } : null;
+}
+
+export function parseStepsState(raw: unknown): StepsState {
+  const s = isObj(raw) ? raw : {};
+  const days: Record<DateKey, StepDay> = {};
+  if (isObj(s.days)) {
+    for (const [day, v] of Object.entries(s.days)) {
+      if (!dateKey(day) || !isObj(v)) continue;
+      days[day] = { steps: int(v.steps, 0, LIMITS.maxDailySteps, 0), goal: clampGoal(typeof v.goal === 'number' ? v.goal : LIMITS.stepGoalDefault) };
+    }
+  }
+  const unsynced = [...new Set(list(s.unsynced, 3660).filter((d): d is DateKey => typeof d === 'string' && !!dateKey(d) && d in days))];
+  const cloudUserId = typeof s.cloudUserId === 'string' && /^[0-9a-f-]{36}$/i.test(s.cloudUserId) ? s.cloudUserId : null;
+  return { days, lastSample: parseSample(s.lastSample), unsynced, cloudUserId };
 }

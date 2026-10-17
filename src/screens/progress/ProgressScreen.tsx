@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { ScreenTimeCard, StepsCard } from '../../components/progress/ActivityCards';
 import { BarChart } from '../../components/progress/BarChart';
 import { Heatmap } from '../../components/progress/Heatmap';
 import { TrophyIllustration, GrowthIllustration } from '../../components/illustrations';
@@ -51,6 +52,13 @@ export default function ProgressScreen({ navigation }: TabScreenProps<'Progress'
         title="Progress"
         right={<IconButton icon="trophy-outline" accessibilityLabel="Achievements" onPress={() => navigation.navigate('Achievements')} />}
       />
+
+      {/* Activity: shown even before any habits or tasks exist. */}
+      <View style={styles.activity}>
+        <StepsCard onPress={() => navigation.navigate('Steps')} />
+        <ScreenTimeCard onPress={() => navigation.navigate('ScreenTime')} />
+      </View>
+      <SectionHeader title="Habits & tasks" />
 
       {!hasAnyData ? (
         <EmptyState
@@ -185,6 +193,7 @@ export default function ProgressScreen({ navigation }: TabScreenProps<'Progress'
 }
 
 const styles = StyleSheet.create({
+  activity: { gap: spacing.md },
   tiles: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   habitList: { gap: spacing.lg },
   habitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

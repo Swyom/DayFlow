@@ -19,18 +19,8 @@ export function AuthHeader({ title, subtitle }: { title: string; subtitle: strin
   );
 }
 
-/** Small reassurance line: accounts are local profiles, not cloud accounts. */
-export function DeviceNote() {
-  return (
-    <AppText variant="caption" tone="secondary" align="center" style={styles.note}>
-      Your account and data are stored privately on this device.
-    </AppText>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.xxxl },
   title: { marginTop: spacing.xl },
   subtitle: { marginTop: spacing.sm, maxWidth: 300 },
-  note: { marginTop: spacing.xxl },
 });

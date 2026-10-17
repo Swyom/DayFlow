@@ -1,22 +1,26 @@
 export const APP_NAME = 'DayFlow';
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.2.0';
 
 /** AsyncStorage keys. Bump the suffix when a stored shape changes incompatibly. */
 export const STORAGE_KEYS = {
   preferences: 'dayflow:prefs:v1',
-  accounts: 'dayflow:accounts:v1',
-  /** Plain-text session used up to v2.1; migrated to SECURE_KEYS.session on launch. */
+  /** The device owner's profile (see services/profileStore.ts). */
+  profile: 'dayflow:profile:v1',
+  /** Cloud sync bookkeeping for the profile. */
+  cloud: 'dayflow:cloud:v1',
+  userData: (localId: string) => `dayflow:data:v1:${localId}`,
+  steps: (localId: string) => `dayflow:steps:v1:${localId}`,
+  /** Last screen-time upload per day (avoids re-uploading unchanged days). */
+  screenTimeSync: (localId: string) => `dayflow:screentime-sync:v1:${localId}`,
+
+  // Removed email/password log-in (≤ v2.1). Read once to carry data over, then deleted.
+  legacyAccounts: 'dayflow:accounts:v1',
   legacySession: 'dayflow:session:v1',
-  userData: (userId: string) => `dayflow:data:v1:${userId}`,
-  /** Failed log-in counters (brute-force lock-out). */
-  loginAttempts: 'dayflow:auth:attempts:v1',
+  legacyLoginAttempts: 'dayflow:auth:attempts:v1',
 } as const;
 
-/**
- * expo-secure-store keys (Keychain / Keystore). Only [A-Za-z0-9._-] is allowed.
- * `session` replaces the plain AsyncStorage session used up to v2.1.
- */
-export const SECURE_KEYS = {
+/** expo-secure-store keys used by the removed log-in (≤ v2.1). Only cleaned up now. */
+export const LEGACY_SECURE_KEYS = {
   session: 'dayflow.session',
   credential: (userId: string) => `dayflow.credential.${userId}`,
 } as const;

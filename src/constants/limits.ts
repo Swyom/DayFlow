@@ -5,10 +5,18 @@
  */
 export const LIMITS = {
   name: 40,
+  fullNameMin: 2,
+  fullName: 60,
   email: 254,
-  passwordMin: 8,
-  /** Upper bound keeps password hashing time predictable. */
-  passwordMax: 128,
+  mobileInput: 20,
+  ageMin: 13,
+  ageMax: 120,
+  location: 120,
+  stepGoalMin: 500,
+  stepGoalMax: 100_000,
+  stepGoalDefault: 8000,
+  /** Plausibility cap for one day's steps (matches the database constraint). */
+  maxDailySteps: 200_000,
   habitUnit: 16,
   habitNotes: 280,
   habitTarget: 99,

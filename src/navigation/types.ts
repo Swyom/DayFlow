@@ -16,10 +16,9 @@ export type TabParamList = {
 export type RootStackParamList = {
   // First launch
   Onboarding: undefined;
-  // Signed out
-  Login: undefined;
-  SignUp: undefined;
-  // Signed in
+  // Until the profile is filled in
+  ProfileSetup: undefined;
+  // With a profile
   Main: NavigatorScreenParams<TabParamList> | undefined;
   HabitDetail: { habitId: string };
   HabitEditor: { habitId?: string } | undefined;
@@ -29,6 +28,8 @@ export type RootStackParamList = {
   Settings: undefined;
   EditProfile: undefined;
   DeleteAccount: undefined;
+  Steps: undefined;
+  ScreenTime: undefined;
 };
 
 export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;

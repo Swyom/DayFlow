@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { Image, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { radius, spacing, useTheme } from '../../theme';
 import { AppText } from './AppText';
 import { Icon3D, Icon3DName } from './Icon3D';
@@ -37,9 +37,11 @@ export function IconBadge({
   );
 }
 
-/** Circular initials avatar. */
-export function Avatar({ name, size = 52 }: { name: string; size?: number }) {
+/** Circular avatar: the profile photo when `uri` loads, otherwise initials. */
+export function Avatar({ name, size = 52, uri }: { name: string; size?: number; uri?: string | null }) {
   const { colors, shadows } = useTheme();
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const showPhoto = !!uri && uri !== failedUri;
   const initials =
     name
       .trim()
@@ -65,11 +67,21 @@ export function Avatar({ name, size = 52 }: { name: string; size?: number }) {
           backgroundColor: colors.primarySoft,
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
         }}
       >
-        <AppText variant="title3" tone="accent" style={{ fontSize: size * 0.34, lineHeight: size * 0.42 }}>
-          {initials}
-        </AppText>
+        {showPhoto ? (
+          <Image
+            source={{ uri }}
+            style={{ width: size - 10, height: size - 10 }}
+            resizeMode="cover"
+            onError={() => setFailedUri(uri)}
+          />
+        ) : (
+          <AppText variant="title3" tone="accent" style={{ fontSize: size * 0.34, lineHeight: size * 0.42 }}>
+            {initials}
+          </AppText>
+        )}
       </View>
     </View>
   );

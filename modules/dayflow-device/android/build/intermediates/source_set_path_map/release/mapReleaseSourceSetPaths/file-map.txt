@@ -1,0 +1,19 @@
+expo.modules.dayflowdevice.dayflow-device-sqlite-2.3.0-0 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\05868addc123d6268dcca5dcec5121cc\transformed\sqlite-2.3.0\res
+expo.modules.dayflowdevice.dayflow-device-startup-runtime-1.1.1-1 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\3744f6acced483a5e151ea547916e4b2\transformed\startup-runtime-1.1.1\res
+expo.modules.dayflowdevice.dayflow-device-work-runtime-2.9.1-2 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\4b3c2be286352fc79a49f355e89524ea\transformed\work-runtime-2.9.1\res
+expo.modules.dayflowdevice.dayflow-device-lifecycle-runtime-2.5.1-3 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\50abfffc9e7e2c7f62bc05273fcf7613\transformed\lifecycle-runtime-2.5.1\res
+expo.modules.dayflowdevice.dayflow-device-room-ktx-2.5.0-4 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\7749b260b2a281af596f9b4f3341fa7f\transformed\room-ktx-2.5.0\res
+expo.modules.dayflowdevice.dayflow-device-lifecycle-livedata-core-2.5.1-5 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\785499de4dfb7541ecd0f349b004fd28\transformed\lifecycle-livedata-core-2.5.1\res
+expo.modules.dayflowdevice.dayflow-device-sqlite-framework-2.3.0-6 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\a25289a27b72e0b026fdd19ab6cd7b40\transformed\sqlite-framework-2.3.0\res
+expo.modules.dayflowdevice.dayflow-device-lifecycle-service-2.5.1-7 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\a4233236866a33aa1c8c31690ef9ed52\transformed\lifecycle-service-2.5.1\res
+expo.modules.dayflowdevice.dayflow-device-core-1.9.0-8 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\b68152fef8aa8828f6bf33cdf53a4399\transformed\core-1.9.0\res
+expo.modules.dayflowdevice.dayflow-device-lifecycle-livedata-2.5.1-9 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\e6564b4c70b5cc2732d76ddeffb99f08\transformed\lifecycle-livedata-2.5.1\res
+expo.modules.dayflowdevice.dayflow-device-annotation-experimental-1.3.0-10 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\f82991beecd947dce92d50c8f57283f4\transformed\annotation-experimental-1.3.0\res
+expo.modules.dayflowdevice.dayflow-device-room-runtime-2.5.0-11 C:\Users\P Swyom Sanjog\.gradle\caches\8.14.3\transforms\ffb7ec82a0dffa3d14eff22eecdb493e\transformed\room-runtime-2.5.0\res
+expo.modules.dayflowdevice.dayflow-device-pngs-12 E:\dayflow\modules\dayflow-device\android\build\generated\res\pngs\release
+expo.modules.dayflowdevice.dayflow-device-resValues-13 E:\dayflow\modules\dayflow-device\android\build\generated\res\resValues\release
+expo.modules.dayflowdevice.dayflow-device-mergeReleaseResources-14 E:\dayflow\modules\dayflow-device\android\build\intermediates\incremental\release\mergeReleaseResources\merged.dir
+expo.modules.dayflowdevice.dayflow-device-mergeReleaseResources-15 E:\dayflow\modules\dayflow-device\android\build\intermediates\incremental\release\mergeReleaseResources\stripped.dir
+expo.modules.dayflowdevice.dayflow-device-release-16 E:\dayflow\modules\dayflow-device\android\build\intermediates\merged_res\release\mergeReleaseResources
+expo.modules.dayflowdevice.dayflow-device-main-17 E:\dayflow\modules\dayflow-device\android\src\main\res
+expo.modules.dayflowdevice.dayflow-device-release-18 E:\dayflow\modules\dayflow-device\android\src\release\res

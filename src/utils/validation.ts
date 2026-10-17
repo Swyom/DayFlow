@@ -11,15 +11,6 @@ export function validateEmail(email: string): string | null {
   return null;
 }
 
-export const PASSWORD_MIN = LIMITS.passwordMin;
-
-export function validatePassword(password: string): string | null {
-  if (!password) return 'Enter a password.';
-  if (password.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters.`;
-  if (password.length > LIMITS.passwordMax) return `Use at most ${LIMITS.passwordMax} characters.`;
-  return null;
-}
-
 export function validateName(name: string, label = 'name', max: number = LIMITS.name): string | null {
   const v = name.trim();
   if (!v) return `Enter a ${label}.`;
