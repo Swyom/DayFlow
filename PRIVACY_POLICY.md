@@ -74,15 +74,18 @@ We implement strict industry-standard security practices to protect your data:
 
 You retain complete ownership and control over your data at all times:
 
-### Immediate In-App Deletion:
-You can permanently delete your entire profile and all cloud records at any moment:
-1. Open DayFlow &rarr; tap the **Settings** tab.
-2. Scroll to the bottom and select **Delete Account**.
-3. Confirm deletion.
+### In-App Deletion:
+Open DayFlow &rarr; **Settings** &rarr; **Delete profile & data**, type DELETE and choose one of:
 
-**What happens upon deletion:**
-- Your local profile, habits, tasks, step counts, and screen-time history are permanently wiped from your device.
-- The `delete_current_user()` database procedure executes immediately in Supabase, permanently purging your user record and stored profile photos from the server.
+**1. Restorable for 7 days (default)**
+- Your profile photo is deleted from DayFlow's cloud immediately and can't be restored.
+- Your profile details (name, email, mobile number, age, location, step goal and registration date) are moved to a restricted area of the database that no app, device or user can read, and are kept for **7 days** so you can change your mind.
+- Your habits, tasks, step counts and screen-time history stay **only on the same phone** for those 7 days. They are never uploaded.
+- To restore, choose **Restore a deleted profile** on the setup screen and enter the same email address and mobile number. Your details are checked on our server. For your security, only **5 failed attempts per 24 hours** are allowed per email address and per device, with a wider limit per network address. After that, restoring is blocked for 24 hours. Error messages never say whether an account exists.
+- After 7 days, the retained profile is **permanently deleted** from the cloud by a daily clean-up, and the data kept on your phone is erased the next time DayFlow opens. It can't be restored after that.
+
+**2. Delete permanently now**
+- Your profile, photo, habits, tasks, step counts and screen-time history are erased from your phone and from DayFlow's cloud immediately. Nothing can be restored.
 
 ### Manual Deletion Requests:
 You may also request complete data deletion by emailing us at **swyomsanjog2004@gmail.com**. We will process and verify your request within 48 hours.

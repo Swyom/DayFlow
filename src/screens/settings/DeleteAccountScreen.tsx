@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { AppText, Button, Screen, ScreenHeader, TextField } from '../../components/ui';
+import { AppText, Button, Card, Screen, ScreenHeader, SegmentedControl, TextField } from '../../components/ui';
+import { RECOVERY_DAYS } from '../../domain/recovery';
 import type { RootScreenProps } from '../../navigation/types';
+import { isCloudConfigured } from '../../services/cloudSync';
 import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
 
 const CONFIRM_WORD = 'DELETE';
+type Mode = 'recoverable' | 'permanent';
 
-/** Deleting the profile is irreversible, so it asks the person to type DELETE first. */
+/** Deleting the profile asks the person to type DELETE first, and to choose recoverable or permanent. */
 export default function DeleteAccountScreen({ navigation }: RootScreenProps<'DeleteAccount'>) {
   const profile = useProfile();
   const { deleteProfile } = useProfileContext();
+  const canRecover = isCloudConfigured();
+  const [mode, setMode] = useState<Mode>(canRecover ? 'recoverable' : 'permanent');
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -22,11 +27,11 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
     }
     setDeleting(true);
     try {
-      await deleteProfile();
+      await deleteProfile(mode);
       // Navigation switches to profile setup automatically.
     } catch {
       setDeleting(false);
-      setError('Couldn’t delete your cloud data. Check your internet connection and try again. Nothing was deleted.');
+      setError('Couldn’t reach DayFlow’s servers. Check your internet connection and try again. Nothing was deleted.');
     }
   };
 
@@ -35,13 +40,54 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
       keyboard
       edges={['top', 'bottom']}
       header={<ScreenHeader title="Delete profile" onBack={navigation.goBack} backIcon="close" />}
-      footer={<Button title="Delete everything" variant="danger" icon="trash-outline" onPress={submit} loading={deleting} />}
+      footer={
+        <Button
+          title={mode === 'recoverable' ? 'Delete profile' : 'Delete permanently'}
+          variant="danger"
+          icon="trash-outline"
+          onPress={submit}
+          loading={deleting}
+        />
+      }
     >
       <View style={styles.form}>
-        <AppText variant="body" tone="secondary">
-          This permanently deletes {profile.fullName}’s profile, photo, habits, tasks, scores, step history and screen-time
-          records from this phone and from DayFlow’s cloud. This can’t be undone.
-        </AppText>
+        {canRecover ? (
+          <SegmentedControl<Mode>
+            accessibilityLabel="How to delete"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'recoverable', label: `Restorable for ${RECOVERY_DAYS} days` },
+              { value: 'permanent', label: 'Permanently now' },
+            ]}
+          />
+        ) : null}
+
+        <Card elevation="insetSm" style={styles.info}>
+          {mode === 'recoverable' ? (
+            <>
+              <AppText variant="bodyStrong">You can change your mind for {RECOVERY_DAYS} days</AppText>
+              <AppText variant="body" tone="secondary">
+                {profile.fullName}’s profile details are kept securely in DayFlow’s cloud for {RECOVERY_DAYS} days. Habits,
+                tasks, steps and screen time stay on this phone only for the same time and are never uploaded.
+              </AppText>
+              <AppText variant="body" tone="secondary">
+                To restore, choose “Restore a deleted profile” and enter the same email address and mobile number. After{' '}
+                {RECOVERY_DAYS} days everything is deleted permanently and can’t be restored.
+              </AppText>
+              <AppText variant="body" tone="secondary">Your profile photo is deleted right away and can’t be restored.</AppText>
+            </>
+          ) : (
+            <>
+              <AppText variant="bodyStrong">This can’t be undone</AppText>
+              <AppText variant="body" tone="secondary">
+                {profile.fullName}’s profile, photo, habits, tasks, scores, step history and screen-time records are deleted
+                from this phone and from DayFlow’s cloud right now. Nothing can be restored later.
+              </AppText>
+            </>
+          )}
+        </Card>
+
         <TextField
           label={`Type ${CONFIRM_WORD} to confirm`}
           icon="warning-outline"
@@ -65,4 +111,5 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
 
 const styles = StyleSheet.create({
   form: { gap: spacing.xl, marginTop: spacing.lg },
+  info: { gap: spacing.sm },
 });

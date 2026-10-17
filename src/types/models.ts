@@ -88,6 +88,18 @@ export type Profile = {
   updatedAt: string;
 };
 
+/**
+ * Left on this phone after a recoverable deletion: which local habits, tasks, steps and
+ * screen time belong to the deleted profile, until the 7-day recovery window ends.
+ */
+export type RecoveryArchive = {
+  localId: string;
+  /** Server id of the retained profile (deleted_profiles.id). */
+  deletionId: string;
+  deletedAt: string;
+  expiresAt: string;
+};
+
 /** Cloud sync bookkeeping kept next to the profile. */
 export type CloudState = {
   /** Anonymous Supabase user the data was last written for. */

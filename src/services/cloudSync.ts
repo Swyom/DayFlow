@@ -1,3 +1,4 @@
+import { parseRecoveryResult, RecoveryResult } from '../domain/recovery';
 import type { Profile } from '../types/models';
 import { AVATAR_BUCKET, ensureUserId, supabase } from './supabase';
 
@@ -59,6 +60,7 @@ export async function checkProfileConflicts(
 ): Promise<{ nameTaken: boolean; emailTaken: boolean }> {
   if (!supabase) return { nameTaken: false, emailTaken: false };
   try {
+    await ensureUserId(); // the check is only open to signed-in (anonymous) users
     const res = await client().rpc('check_profile_conflicts', {
       check_name: fullName.trim(),
       check_email: email.trim().toLowerCase(),
@@ -169,4 +171,48 @@ export async function deleteCloudAccount() {
   await removeAvatarFiles((listed.data ?? []).map((f) => `${userId}/${f.name}`));
   check(await db.rpc('delete_current_user'));
   await db.auth.signOut({ scope: 'local' }).catch(() => undefined);
+}
+
+/**
+ * Recoverable deletion: the server keeps the profile (not the photo) for 7 days in a table
+ * no client can read, then deletes the anonymous auth user. Returns the retained record's
+ * id and expiry, or nulls when there was no cloud profile to keep.
+ */
+export async function softDeleteCloudAccount(): Promise<{ deletionId: string | null; purgeAfter: string | null }> {
+  const db = client();
+  const { data } = await db.auth.getSession();
+  const userId = data.session?.user.id;
+  if (!userId) return { deletionId: null, purgeAfter: null };
+  const listed = check(await db.storage.from(AVATAR_BUCKET).list(userId, { limit: 100 }));
+  await removeAvatarFiles((listed.data ?? []).map((f) => `${userId}/${f.name}`));
+  const res = check(await db.rpc('soft_delete_current_user'));
+  await db.auth.signOut({ scope: 'local' }).catch(() => undefined);
+  const out = (res.data ?? {}) as { deletion_id?: unknown; purge_after?: unknown };
+  return {
+    deletionId: typeof out.deletion_id === 'string' ? out.deletion_id : null,
+    purgeAfter: typeof out.purge_after === 'string' ? out.purge_after : null,
+  };
+}
+
+/** Thrown when recovery can't reach the server (offline, DNS, timeouts). */
+export class CloudUnavailableError extends Error {}
+
+/**
+ * Asks the server to restore a deleted profile onto this device's (new) anonymous user.
+ * Matching, the 7-day window and the attempt limits are all decided server-side.
+ */
+export async function recoverDeletedProfile(email: string, mobile: string): Promise<RecoveryResult> {
+  let res;
+  try {
+    await ensureUserId();
+    res = await client().rpc('recover_deleted_profile', { p_email: email, p_mobile: mobile });
+  } catch (e) {
+    throw new CloudUnavailableError(e instanceof Error ? e.message : String(e));
+  }
+  if (res.error) {
+    // PostgREST/network failures carry no status code; database errors do.
+    if (!res.error.code) throw new CloudUnavailableError(res.error.message);
+    throw res.error;
+  }
+  return parseRecoveryResult(res.data);
 }

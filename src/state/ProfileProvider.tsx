@@ -1,18 +1,24 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { cleanProfileInput } from '../domain/profile';
+import { archiveMatches, RecoveryResult, RECOVERY_WINDOW_MS } from '../domain/recovery';
 import { clampGoal } from '../domain/steps';
 import * as cloud from '../services/cloudSync';
 import {
   clearLegacyAuth,
+  clearRecoveryArchive,
   findLegacyAccount,
   loadCloudState,
   loadProfile,
+  purgeExpiredRecoveryArchive,
+  removeLocalActivity,
   removeLocalProfile,
+  removeProfileRecord,
   saveCloudState,
   saveProfile,
+  saveRecoveryArchive,
 } from '../services/profileStore';
-import type { CloudState, LegacyAccount, Profile } from '../types/models';
+import type { CloudState, LegacyAccount, Profile, RecoveryArchive } from '../types/models';
 import { createId } from '../utils/id';
 
 type ProfileStatus = 'loading' | 'needsSetup' | 'ready';
@@ -33,8 +39,19 @@ type ProfileContextValue = {
   /** Uploads a JPEG (base64) as the new profile picture; `previewUri` shows at once. */
   changeAvatar: (jpegBase64: string, previewUri: string) => Promise<void>;
   removeAvatar: () => Promise<void>;
-  /** Deletes the profile and all data, on this device and in the cloud. */
-  deleteProfile: () => Promise<void>;
+  /**
+   * `recoverable`: the cloud profile is kept 7 days and this phone keeps its habits, tasks,
+   * steps and screen time until then. `permanent`: everything is erased now.
+   * Either way the profile photo is deleted immediately.
+   */
+  deleteProfile: (mode: 'recoverable' | 'permanent') => Promise<void>;
+  /** Local data kept on this phone from a recoverable deletion, while it is still valid. */
+  recoveryArchive: RecoveryArchive | null;
+  /**
+   * Restores a deleted profile after the server verifies email + mobile. Throws
+   * CloudUnavailableError when offline; never restores anything on any other outcome.
+   */
+  recoverProfile: (email: string, mobile: string) => Promise<RecoveryResult>;
   /**
    * Makes sure the anonymous cloud user exists and has the latest profile, and returns
    * its id. Steps and screen time call this before uploading (their rows reference it).
@@ -49,6 +66,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [legacyAccount, setLegacyAccount] = useState<LegacyAccount | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [recoveryArchive, setRecoveryArchive] = useState<RecoveryArchive | null>(null);
 
   const profileRef = useRef<Profile | null>(null);
   const cloudRef = useRef<CloudState>({ userId: null, syncedAt: null });
@@ -56,7 +74,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const [stored, cloudState] = await Promise.all([loadProfile(), loadCloudState()]);
+      const [stored, cloudState, archive] = await Promise.all([
+        loadProfile(),
+        loadCloudState(),
+        purgeExpiredRecoveryArchive().catch(() => null),
+      ]);
+      setRecoveryArchive(archive);
       cloudRef.current = cloudState;
       profileRef.current = stored;
       setProfile(stored);
@@ -263,18 +286,76 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setAvatarUrl(null);
   }, [ensureCloudReady, updateProfile]);
 
-  const deleteProfile = useCallback(async () => {
-    const current = profileRef.current;
-    if (!current) return;
-    // Cloud first: if it fails (e.g. offline) nothing is deleted and the user can retry.
-    if (cloud.isCloudConfigured()) await cloud.deleteCloudAccount();
-    await removeLocalProfile(current.localId);
-    cloudRef.current = { userId: null, syncedAt: null };
-    profileRef.current = null;
-    setProfile(null);
-    setAvatarUrl(null);
-    setStatus('needsSetup');
-  }, []);
+  const deleteProfile = useCallback(
+    async (mode: 'recoverable' | 'permanent') => {
+      const current = profileRef.current;
+      if (!current) return;
+      // Cloud first: if it fails (e.g. offline) nothing is deleted and the user can retry.
+      let kept: { deletionId: string | null; purgeAfter: string | null } = { deletionId: null, purgeAfter: null };
+      if (cloud.isCloudConfigured()) {
+        if (mode === 'recoverable') kept = await cloud.softDeleteCloudAccount();
+        else await cloud.deleteCloudAccount();
+      }
+
+      // Only one deletion is kept on a phone: a newer one replaces any older archive.
+      const previous = recoveryArchive;
+      if (previous && previous.localId !== current.localId) await removeLocalActivity(previous.localId);
+
+      if (kept.deletionId) {
+        const now = Date.now();
+        const serverExpiry = kept.purgeAfter ? Date.parse(kept.purgeAfter) : NaN;
+        const expiresAt = Math.min(Number.isFinite(serverExpiry) ? serverExpiry : Infinity, now + RECOVERY_WINDOW_MS);
+        const archive: RecoveryArchive = {
+          localId: current.localId,
+          deletionId: kept.deletionId,
+          deletedAt: new Date(now).toISOString(),
+          expiresAt: new Date(expiresAt).toISOString(),
+        };
+        await removeProfileRecord();
+        await saveRecoveryArchive(archive);
+        setRecoveryArchive(archive);
+      } else {
+        // Permanent, or nothing was retained in the cloud (so it could never be verified).
+        await removeLocalProfile(current.localId);
+        await clearRecoveryArchive();
+        setRecoveryArchive(null);
+      }
+      cloudRef.current = { userId: null, syncedAt: null };
+      profileRef.current = null;
+      setProfile(null);
+      setAvatarUrl(null);
+      setStatus('needsSetup');
+    },
+    [recoveryArchive],
+  );
+
+  const recoverProfile = useCallback(
+    async (email: string, mobile: string): Promise<RecoveryResult> => {
+      if (!cloud.isCloudConfigured()) throw new cloud.CloudUnavailableError('Cloud sync is not configured.');
+      const result = await cloud.recoverDeletedProfile(email, mobile);
+      if (result.status !== 'restored') return result;
+
+      const userId = await cloud.ensureUserId();
+      const remote = await cloud.fetchProfile(userId);
+      if (!remote) return { status: 'not_found' };
+
+      const archive = await purgeExpiredRecoveryArchive().catch(() => null);
+      const reattach = archiveMatches(archive, result.deletionId);
+      const restored: Profile = { ...remote, localId: reattach ? archive.localId : createId('u_') };
+      await saveProfile(restored);
+      cloudRef.current = { userId, syncedAt: restored.updatedAt };
+      await saveCloudState(cloudRef.current);
+      if (reattach) {
+        await clearRecoveryArchive();
+        setRecoveryArchive(null);
+      }
+      profileRef.current = restored;
+      setProfile(restored);
+      setStatus('ready');
+      return result;
+    },
+    [],
+  );
 
   const value = useMemo(
     () => ({
@@ -288,9 +369,25 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       changeAvatar,
       removeAvatar,
       deleteProfile,
+      recoveryArchive,
+      recoverProfile,
       ensureCloudReady,
     }),
-    [status, profile, legacyAccount, avatarUrl, createProfile, updateProfile, setStepGoal, changeAvatar, removeAvatar, deleteProfile, ensureCloudReady],
+    [
+      status,
+      profile,
+      legacyAccount,
+      avatarUrl,
+      createProfile,
+      updateProfile,
+      setStepGoal,
+      changeAvatar,
+      removeAvatar,
+      deleteProfile,
+      recoveryArchive,
+      recoverProfile,
+      ensureCloudReady,
+    ],
   );
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }

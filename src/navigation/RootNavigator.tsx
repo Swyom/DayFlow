@@ -8,6 +8,7 @@ import type { RootStackParamList, TabParamList } from './types';
 
 import OnboardingScreen from '../screens/onboarding/OnboardingScreen';
 import ProfileSetupScreen from '../screens/profile/ProfileSetupScreen';
+import RecoverProfileScreen from '../screens/profile/RecoverProfileScreen';
 import HomeScreen from '../screens/home/HomeScreen';
 import HabitsScreen from '../screens/habits/HabitsScreen';
 import HabitDetailScreen from '../screens/habits/HabitDetailScreen';
@@ -72,7 +73,10 @@ export function RootNavigator({ onboarded, hasProfile }: { onboarded: boolean; h
       {!onboarded ? (
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade' }} />
       ) : !hasProfile ? (
-        <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} options={{ animation: 'fade' }} />
+        <Stack.Group>
+          <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} options={{ animation: 'fade' }} />
+          <Stack.Screen name="RecoverProfile" component={RecoverProfileScreen} />
+        </Stack.Group>
       ) : (
         <>
           <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade' }} />

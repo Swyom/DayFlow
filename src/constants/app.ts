@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   profile: 'dayflow:profile:v1',
   /** Cloud sync bookkeeping for the profile. */
   cloud: 'dayflow:cloud:v1',
+  /** Local data kept for a recoverable deletion (see domain/recovery.ts). */
+  recoveryArchive: 'dayflow:recovery-archive:v1',
   userData: (localId: string) => `dayflow:data:v1:${localId}`,
   steps: (localId: string) => `dayflow:steps:v1:${localId}`,
   /** Persistent local screen-time history (keeps daily summaries on device across restarts). */

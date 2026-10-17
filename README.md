@@ -94,6 +94,26 @@ Expo dashboard). `eas.json` and the update workflow already use those environmen
 4. Check the setup: `node --env-file=.env scripts/supabase/verify-cloud.mjs`. It creates two
    temporary anonymous users, tests profile upsert, strict constraints, avatar storage isolation,
    and verifies that neither user can read or change the other's profile or photos, then deletes both users.
+5. Run `supabase/migrations/20261017120000_dayflow_account_recovery.sql` (after the first one).
+   It adds 7-day recoverable deletion (`soft_delete_current_user()`), verified recovery
+   (`recover_deleted_profile(email, mobile)`), server-side attempt limits (5 failures per 24 h
+   per email and per anonymous user, 20 per IP address, then a 24-hour lock) and a daily purge
+   via `pg_cron`. Retained profiles and attempt counters live in tables that no client can read.
+   Then check it with `node --env-file=.env scripts/supabase/verify-recovery.mjs`. Run that at most
+   once a day per network: it counts about 15 failed attempts against your IP address.
+
+### Account deletion and recovery
+
+- **Settings → Delete profile & data** offers *Restorable for 7 days* (default) or *Permanently now*.
+- Restorable: the photo is deleted at once; the profile details are retained server-side for 7
+  days; habits, tasks, steps and screen time stay on that phone only, until the 7 days end.
+- **Restore a deleted profile** (on the setup screen) asks for the original email and mobile
+  number. The server verifies them, enforces the limits and restores the profile. Local data comes
+  back only on the phone it was kept on. Every mismatch shows *"Account not found. Please check
+  your details or create a new account."*; after 5 failures, *"You have reached the maximum
+  number of recovery attempts. Please try again tomorrow."*
+- After 7 days nothing can be restored: the cloud copy is purged and the phone erases its copy on
+  the next launch.
 
 ### 3. AdMob
 

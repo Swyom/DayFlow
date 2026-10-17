@@ -4,7 +4,8 @@ import { AuthHeader } from '../../components/auth/AuthHeader';
 import { ProfileFields } from '../../components/profile/ProfileFields';
 import { AppText, Button, Screen } from '../../components/ui';
 import { cleanProfileInput, FIELD_LABELS, invalidFields, ProfileErrors, ProfileField, ProfileInput, validateProfile } from '../../domain/profile';
-import { DuplicateProfileError } from '../../services/cloudSync';
+import type { RootScreenProps } from '../../navigation/types';
+import { DuplicateProfileError, isCloudConfigured } from '../../services/cloudSync';
 import { useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
 import { notify } from '../../utils/confirm';
@@ -13,7 +14,7 @@ import { notify } from '../../utils/confirm';
  * First-run profile. Every field is required: the app can't be entered until the form
  * is complete, and an alert lists whatever is still missing.
  */
-export default function ProfileSetupScreen() {
+export default function ProfileSetupScreen({ navigation }: RootScreenProps<'ProfileSetup'>) {
   const { createProfile, legacyAccount } = useProfileContext();
   const [form, setForm] = useState<ProfileInput>(() => ({
     fullName: legacyAccount?.name ?? '',
@@ -82,10 +83,21 @@ export default function ProfileSetupScreen() {
           read it. Your registration date is recorded automatically. You can add a profile photo later in Settings.
         </AppText>
       </View>
+      {isCloudConfigured() ? (
+        <Button
+          title="Restore a deleted profile"
+          icon="refresh"
+          variant="ghost"
+          size="md"
+          onPress={() => navigation.navigate('RecoverProfile')}
+          style={styles.restore}
+        />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   note: { marginTop: spacing.xxl },
+  restore: { marginTop: spacing.md },
 });
