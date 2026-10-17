@@ -23,6 +23,7 @@ import { requestNotificationPermission } from '../../services/notificationServic
 import { spacing, useTheme } from '../../theme';
 import type { Preferences } from '../../types/models';
 import { confirm } from '../../utils/confirm';
+import * as Updates from 'expo-updates';
 
 export default function SettingsScreen({ navigation }: RootScreenProps<'Settings'>) {
   const theme = useTheme();
@@ -96,6 +97,33 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
       destructive: true,
     });
     if (ok) resetSnakeStats();
+  };
+
+  const onCheckForUpdates = async () => {
+    if (!Updates.isEnabled) {
+      toast.show({ message: 'Running in development mode (connected to Metro).' });
+      return;
+    }
+    try {
+      toast.show({ message: 'Checking for updates...' });
+      const check = await Updates.checkForUpdateAsync();
+      if (check.isAvailable) {
+        toast.show({ message: 'Downloading update...' });
+        await Updates.fetchUpdateAsync();
+        const ok = await confirm({
+          title: 'Update ready',
+          message: 'A new version of DayFlow is ready to apply. Restart now?',
+          confirmLabel: 'Restart',
+        });
+        if (ok) {
+          await Updates.reloadAsync();
+        }
+      } else {
+        toast.show({ message: 'DayFlow is already up to date!' });
+      }
+    } catch {
+      toast.show({ message: 'Could not check for updates. Try again later.', tone: 'error' });
+    }
   };
 
   return (
@@ -217,6 +245,13 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
       <SectionHeader title="About" />
       <Card padding={spacing.xs}>
         <ListRow icon="logo" title={APP_NAME} value={`Version ${APP_VERSION}`} />
+        <ListRow
+          icon="sparkles"
+          title="Check for updates"
+          subtitle="Download the latest version immediately"
+          onPress={onCheckForUpdates}
+          divider
+        />
         <ListRow
           icon="shield"
           title="Privacy & Data Retention"
