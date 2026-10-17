@@ -62,6 +62,38 @@ create table if not exists public.profiles (
 comment on table public.profiles is 'DayFlow mandatory user profile (one per auth user, strictly validated).';
 comment on column public.profiles.avatar_path is 'Object path in the private avatars bucket: <user id>/<file>.';
 
+-- ---------------------------------------------------------------------------
+-- Deduplicate any existing profile records before creating unique indexes:
+-- If earlier development/testing created multiple rows for the same email or name,
+-- this keeps the single most recently updated row and removes older duplicate rows.
+-- ---------------------------------------------------------------------------
+
+delete from public.profiles
+where id in (
+  select id from (
+    select id,
+           row_number() over (
+             partition by lower(email)
+             order by updated_at desc, created_at desc
+           ) as rn
+    from public.profiles
+  ) t
+  where t.rn > 1
+);
+
+delete from public.profiles
+where id in (
+  select id from (
+    select id,
+           row_number() over (
+             partition by lower(btrim(full_name))
+             order by updated_at desc, created_at desc
+           ) as rn
+    from public.profiles
+  ) t
+  where t.rn > 1
+);
+
 -- Uniqueness constraints: prevent duplicate email addresses and duplicate names across accounts
 create unique index if not exists profiles_email_unique on public.profiles (lower(email));
 create unique index if not exists profiles_full_name_unique on public.profiles (lower(btrim(full_name)));

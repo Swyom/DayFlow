@@ -116,7 +116,7 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
         <ListRow
           icon="shield"
           title="Privacy"
-          subtitle="Habits and tasks stay on this phone. Your profile, photo, steps and screen-time summaries are backed up to DayFlow’s cloud, protected so only this app on this phone can read them. Ads are shown on the Home screen."
+          subtitle="Your habits, tasks, steps and screen-time data stay on your device. Only the information you submit for your profile is stored in DayFlow’s cloud."
           divider
         />
       </Card>
