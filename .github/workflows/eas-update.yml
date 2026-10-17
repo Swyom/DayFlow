@@ -42,5 +42,8 @@ jobs:
       - name: 🧪 Run Unit Tests
         run: npm test
 
+      - name: 🚀 Publish OTA update to Preview (Installed APKs)
+        run: eas update --auto --non-interactive --environment preview
+
       - name: 🚀 Publish OTA update to Production
         run: eas update --auto --non-interactive --environment production
