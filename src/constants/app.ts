@@ -8,8 +8,10 @@ export const STORAGE_KEYS = {
   profile: 'dayflow:profile:v1',
   /** Cloud sync bookkeeping for the profile. */
   cloud: 'dayflow:cloud:v1',
-  /** Local data kept for a recoverable deletion (see domain/recovery.ts). */
-  recoveryArchive: 'dayflow:recovery-archive:v1',
+  /** Timestamp of the user's last active app interaction (see domain/inactivity.ts). */
+  lastActiveAt: 'dayflow:last-active:v1',
+  /** Flag indicating that 7-day inactivity was triggered and cloud account deletion is pending. */
+  pendingInactivityPurge: 'dayflow:pending-purge:v1',
   userData: (localId: string) => `dayflow:data:v1:${localId}`,
   steps: (localId: string) => `dayflow:steps:v1:${localId}`,
   /** Persistent local screen-time history (keeps daily summaries on device across restarts). */

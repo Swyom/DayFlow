@@ -12,7 +12,6 @@ import type {
   Preferences,
   Priority,
   Profile,
-  RecoveryArchive,
   SnakeStats,
   StepDay,
   StepSample,
@@ -171,6 +170,7 @@ export function parseProfile(raw: unknown): Profile | null {
     avatarPath,
     stepGoal: clampGoal(typeof raw.stepGoal === 'number' ? raw.stepGoal : LIMITS.stepGoalDefault),
     updatedAt: isoTime(raw.updatedAt) ?? registeredAt,
+    lastActiveAt: isoTime(raw.lastActiveAt) ?? undefined,
   };
 }
 
@@ -225,13 +225,4 @@ export function parseScreenTimeState(raw: unknown): Record<DateKey, AppUsage[]> 
     if (apps.length > 0) out[day] = apps;
   }
   return out;
-}
-
-export function parseRecoveryArchive(raw: unknown): RecoveryArchive | null {
-  if (!isObj(raw)) return null;
-  const localId = id(raw.localId);
-  const deletionId = typeof raw.deletionId === 'string' && /^[0-9a-f-]{36}$/i.test(raw.deletionId) ? raw.deletionId : null;
-  const deletedAt = isoTime(raw.deletedAt);
-  const expiresAt = isoTime(raw.expiresAt);
-  return localId && deletionId && deletedAt && expiresAt ? { localId, deletionId, deletedAt, expiresAt } : null;
 }

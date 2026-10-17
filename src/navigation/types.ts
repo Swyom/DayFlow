@@ -18,7 +18,6 @@ export type RootStackParamList = {
   Onboarding: undefined;
   // Until the profile is filled in
   ProfileSetup: undefined;
-  RecoverProfile: undefined;
   // With a profile
   Main: NavigatorScreenParams<TabParamList> | undefined;
   HabitDetail: { habitId: string };

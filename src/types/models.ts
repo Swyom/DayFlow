@@ -85,18 +85,8 @@ export type Profile = {
   stepGoal: number;
   /** ISO time of the last local change (sync compares it with `cloud.syncedAt`). */
   updatedAt: string;
-};
-
-/**
- * Left on this phone after a recoverable deletion: which local habits, tasks, steps and
- * screen time belong to the deleted profile, until the 7-day recovery window ends.
- */
-export type RecoveryArchive = {
-  localId: string;
-  /** Server id of the retained profile (deleted_profiles.id). */
-  deletionId: string;
-  deletedAt: string;
-  expiresAt: string;
+  /** ISO time of the last active interaction, synced with Supabase. */
+  lastActiveAt?: string;
 };
 
 /** Cloud sync bookkeeping kept next to the profile. */

@@ -115,8 +115,8 @@ export default function SettingsScreen({ navigation }: RootScreenProps<'Settings
         <ListRow icon="logo" title={APP_NAME} value={`Version ${APP_VERSION}`} />
         <ListRow
           icon="shield"
-          title="Privacy"
-          subtitle="Your habits, tasks, steps and screen-time data stay on your device. Only the information you submit for your profile is stored in DayFlow’s cloud."
+          title="Privacy & Data Retention"
+          subtitle="Your habits, tasks, steps and screen-time data stay strictly on your device. Only your profile details are stored in DayFlow's cloud. Inactive accounts with 7 consecutive days of non-use are automatically and permanently deleted from both cloud and device."
           divider
         />
       </Card>

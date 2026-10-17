@@ -1,13 +1,18 @@
-import { parseRecoveryResult, RecoveryResult } from '../domain/recovery';
+import {
+  DuplicateProfileError,
+  parseCloudError,
+  ProfileConflicts,
+  RateLimitError,
+} from '../domain/cloudErrors';
 import type { Profile } from '../types/models';
 import { AVATAR_BUCKET, ensureUserId, supabase } from './supabase';
 
-/**
- * Reads and writes DayFlow's Supabase profiles and avatar bucket.
- * Every profile write is an upsert keyed 1:1 by auth.users id, so retries and repeated
- * syncs update rows in place and never create duplicate records. RLS on the server ensures
- * the authenticated user can only access their own profile and avatar files.
- */
+export {
+  DuplicateProfileError,
+  parseCloudError,
+  ProfileConflicts,
+  RateLimitError,
+};
 
 function client() {
   if (!supabase) throw new Error('Cloud sync is not configured.');
@@ -18,55 +23,6 @@ const check = <T extends { error: unknown }>(res: T): T => {
   if (res.error) throw res.error;
   return res;
 };
-
-export type ProfileConflicts = {
-  nameTaken: boolean;
-  emailTaken: boolean;
-  mobileTaken: boolean;
-  conflict: boolean;
-};
-
-/** A field (email, mobile, or name) is already used by an existing profile. */
-export class DuplicateProfileError extends Error {
-  readonly conflicts?: ProfileConflicts;
-
-  constructor(
-    message = 'An account with this information already exists.',
-    conflicts?: ProfileConflicts,
-  ) {
-    super(message);
-    this.name = 'DuplicateProfileError';
-    this.conflicts = conflicts;
-  }
-}
-
-export function parseCloudError(err: unknown): Error {
-  if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
-    const detail = (err as { detail?: string }).detail?.toLowerCase() ?? '';
-    const message = (err as { message?: string }).message?.toLowerCase() ?? '';
-    const text = `${detail} ${message}`;
-    const emailTaken = text.includes('email');
-    const mobileTaken = text.includes('mobile');
-    const nameTaken = text.includes('full_name') || text.includes('name');
-    return new DuplicateProfileError(
-      emailTaken
-        ? 'This email address is already in use by another profile.'
-        : mobileTaken
-          ? 'This mobile number is already in use by another profile.'
-          : nameTaken
-            ? 'This full name is already registered to another profile.'
-            : 'An account with this information already exists.',
-      {
-        emailTaken,
-        mobileTaken,
-        nameTaken,
-        conflict: true,
-      },
-    );
-  }
-  if (err instanceof Error) return err;
-  return new Error(String(err));
-}
 
 export const isCloudConfigured = () => !!supabase;
 
@@ -124,8 +80,8 @@ export async function upsertProfile(userId: string, p: Profile) {
         location_source: p.location.source,
         avatar_path: p.avatarPath,
         step_goal: p.stepGoal,
-        // Only used on the first insert; the database keeps the original value afterwards.
         registered_at: p.registeredAt,
+        last_active_at: p.lastActiveAt ?? new Date().toISOString(),
       },
       { onConflict: 'id' },
     );
@@ -152,6 +108,7 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     avatarPath: data.avatar_path,
     stepGoal: data.step_goal,
     updatedAt: data.updated_at,
+    lastActiveAt: data.last_active_at ?? undefined,
   };
 }
 
@@ -188,78 +145,36 @@ export async function signedAvatarUrl(path: string): Promise<string> {
 }
 
 /**
- * Deletes everything this device stored in Supabase: avatar files, then the anonymous
- * auth user (the database cascades to the profile row).
+ * Activity heartbeat: updates last_active_at in Supabase and returns server timestamp.
+ */
+export async function touchProfileActivity(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const res = await client().rpc('touch_profile_activity');
+    if (res.error) return null;
+    return typeof res.data === 'string' ? res.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes everything this user stored in Supabase: avatar files in storage,
+ * then the auth user (the database cascades to the profile row).
  */
 export async function deleteCloudAccount() {
   const db = client();
   const { data } = await db.auth.getSession();
   const userId = data.session?.user.id;
   if (!userId) return; // never synced: nothing in the cloud
-  const listed = check(await db.storage.from(AVATAR_BUCKET).list(userId, { limit: 100 }));
-  await removeAvatarFiles((listed.data ?? []).map((f) => `${userId}/${f.name}`));
+  try {
+    const listed = await db.storage.from(AVATAR_BUCKET).list(userId, { limit: 100 });
+    if (listed.data && listed.data.length > 0) {
+      await removeAvatarFiles(listed.data.map((f: { name: string }) => `${userId}/${f.name}`)).catch(() => undefined);
+    }
+  } catch {
+    // Storage cleanup error shouldn't block user deletion
+  }
   check(await db.rpc('delete_current_user'));
   await db.auth.signOut({ scope: 'local' }).catch(() => undefined);
-}
-
-/**
- * Recoverable deletion: the server keeps the profile (not the photo) for 7 days in a table
- * no client can read, then deletes the anonymous auth user. Returns the retained record's
- * id and expiry, or nulls when there was no cloud profile to keep.
- */
-export async function softDeleteCloudAccount(): Promise<{ deletionId: string | null; purgeAfter: string | null }> {
-  const db = client();
-  const { data } = await db.auth.getSession();
-  const userId = data.session?.user.id;
-  if (!userId) return { deletionId: null, purgeAfter: null };
-  // Check before touching anything: if the recovery migration isn't installed, nothing is
-  // deleted and the person is offered permanent deletion instead.
-  await assertRecoveryAvailable();
-  const listed = check(await db.storage.from(AVATAR_BUCKET).list(userId, { limit: 100 }));
-  await removeAvatarFiles((listed.data ?? []).map((f) => `${userId}/${f.name}`));
-  const res = check(await db.rpc('soft_delete_current_user'));
-  await db.auth.signOut({ scope: 'local' }).catch(() => undefined);
-  const out = (res.data ?? {}) as { deletion_id?: unknown; purge_after?: unknown };
-  return {
-    deletionId: typeof out.deletion_id === 'string' ? out.deletion_id : null,
-    purgeAfter: typeof out.purge_after === 'string' ? out.purge_after : null,
-  };
-}
-
-/** Thrown when recovery can't reach the server (offline, DNS, timeouts). */
-export class CloudUnavailableError extends Error {}
-
-/** Thrown when the server doesn't have recoverable deletion installed (migration not run). */
-export class RecoveryUnavailableError extends Error {}
-
-/** PostgREST: function not found (PGRST202) / Postgres: undefined function (42883). */
-const isMissingFunction = (e: { code?: string } | null | undefined) => e?.code === 'PGRST202' || e?.code === '42883';
-
-async function assertRecoveryAvailable() {
-  const res = await client().rpc('recovery_status');
-  if (!res.error) return;
-  if (isMissingFunction(res.error)) throw new RecoveryUnavailableError('Recoverable deletion is not set up on the server.');
-  if (!res.error.code) throw new CloudUnavailableError(res.error.message);
-  throw res.error;
-}
-
-/**
- * Asks the server to restore a deleted profile onto this device's (new) anonymous user.
- * Matching, the 7-day window and the attempt limits are all decided server-side.
- */
-export async function recoverDeletedProfile(email: string, mobile: string): Promise<RecoveryResult> {
-  let res;
-  try {
-    await ensureUserId();
-    res = await client().rpc('recover_deleted_profile', { p_email: email, p_mobile: mobile });
-  } catch (e) {
-    throw new CloudUnavailableError(e instanceof Error ? e.message : String(e));
-  }
-  if (res.error) {
-    if (isMissingFunction(res.error)) throw new RecoveryUnavailableError('Profile recovery is not set up on the server.');
-    // PostgREST/network failures carry no status code; database errors do.
-    if (!res.error.code) throw new CloudUnavailableError(res.error.message);
-    throw res.error;
-  }
-  return parseRecoveryResult(res.data);
 }

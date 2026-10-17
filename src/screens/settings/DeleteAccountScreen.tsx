@@ -1,22 +1,19 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { AppText, Button, Card, Screen, ScreenHeader, SegmentedControl, TextField } from '../../components/ui';
-import { RECOVERY_DAYS } from '../../domain/recovery';
+import { AppText, Button, Card, Screen, ScreenHeader, TextField } from '../../components/ui';
 import type { RootScreenProps } from '../../navigation/types';
-import { isCloudConfigured, RecoveryUnavailableError } from '../../services/cloudSync';
 import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
-import { confirm } from '../../utils/confirm';
 
 const CONFIRM_WORD = 'DELETE';
-type Mode = 'recoverable' | 'permanent';
 
-/** Deleting the profile asks the person to type DELETE first, and to choose recoverable or permanent. */
+/**
+ * Permanent account deletion. Asks the user to type DELETE to confirm.
+ * Erases cloud profile, avatar in Supabase Storage, and all local AsyncStorage records immediately.
+ */
 export default function DeleteAccountScreen({ navigation }: RootScreenProps<'DeleteAccount'>) {
   const profile = useProfile();
   const { deleteProfile } = useProfileContext();
-  const canRecover = isCloudConfigured();
-  const [mode, setMode] = useState<Mode>(canRecover ? 'recoverable' : 'permanent');
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -28,33 +25,11 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
     }
     setDeleting(true);
     try {
-      await deleteProfile(mode);
+      await deleteProfile();
       // Navigation switches to profile setup automatically.
-    } catch (e) {
-      if (e instanceof RecoveryUnavailableError) {
-        // Nothing has been deleted. Never fall back to permanent deletion without asking.
-        const permanent = await confirm({
-          title: 'Restorable deletion unavailable',
-          message:
-            'Keeping your profile for 7 days isn’t available right now, so nothing has been deleted. You can delete everything permanently instead, or cancel and try again later.',
-          confirmLabel: 'Delete permanently',
-          destructive: true,
-        });
-        if (permanent) {
-          setMode('permanent');
-          try {
-            await deleteProfile('permanent');
-            return;
-          } catch {
-            // fall through to the generic message
-          }
-        } else {
-          setDeleting(false);
-          return;
-        }
-      }
+    } catch {
       setDeleting(false);
-      setError('Couldn’t reach DayFlow’s servers. Check your internet connection and try again. Nothing was deleted.');
+      setError('Couldn’t reach DayFlow’s servers to delete your cloud profile. Check your internet connection and try again. Nothing was deleted.');
     }
   };
 
@@ -65,7 +40,7 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
       header={<ScreenHeader title="Delete profile" onBack={navigation.goBack} backIcon="close" />}
       footer={
         <Button
-          title={mode === 'recoverable' ? 'Delete profile' : 'Delete permanently'}
+          title="Delete permanently"
           variant="danger"
           icon="trash-outline"
           onPress={submit}
@@ -74,41 +49,17 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
       }
     >
       <View style={styles.form}>
-        {canRecover ? (
-          <SegmentedControl<Mode>
-            accessibilityLabel="How to delete"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'recoverable', label: `Restorable for ${RECOVERY_DAYS} days` },
-              { value: 'permanent', label: 'Permanently now' },
-            ]}
-          />
-        ) : null}
-
         <Card elevation="insetSm" style={styles.info}>
-          {mode === 'recoverable' ? (
-            <>
-              <AppText variant="bodyStrong">You can change your mind for {RECOVERY_DAYS} days</AppText>
-              <AppText variant="body" tone="secondary">
-                {profile.fullName}’s profile details are kept securely in DayFlow’s cloud for {RECOVERY_DAYS} days. Habits,
-                tasks, steps and screen time stay on this phone only for the same time and are never uploaded.
-              </AppText>
-              <AppText variant="body" tone="secondary">
-                To restore, choose “Restore a deleted profile” and enter the same email address and mobile number. After{' '}
-                {RECOVERY_DAYS} days everything is deleted permanently and can’t be restored.
-              </AppText>
-              <AppText variant="body" tone="secondary">Your profile photo is deleted right away and can’t be restored.</AppText>
-            </>
-          ) : (
-            <>
-              <AppText variant="bodyStrong">This can’t be undone</AppText>
-              <AppText variant="body" tone="secondary">
-                {profile.fullName}’s profile, photo, habits, tasks, scores, step history and screen-time records are deleted
-                from this phone and from DayFlow’s cloud right now. Nothing can be restored later.
-              </AppText>
-            </>
-          )}
+          <AppText variant="bodyStrong">This action is permanent and cannot be undone</AppText>
+          <AppText variant="body" tone="secondary">
+            {profile.fullName}’s profile details, photo, habits, tasks, scores, step history, and screen-time records will be permanently deleted from this phone and from DayFlow’s cloud servers.
+          </AppText>
+          <AppText variant="body" tone="secondary">
+            DayFlow does not offer profile restoration. Once deleted, your account cannot be recovered.
+          </AppText>
+          <AppText variant="caption" tone="muted">
+            Note: DayFlow accounts with 7 consecutive days of inactivity are also permanently and automatically deleted.
+          </AppText>
         </Card>
 
         <TextField
