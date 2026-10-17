@@ -60,7 +60,26 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       cloudRef.current = cloudState;
       profileRef.current = stored;
       setProfile(stored);
-      if (!stored) setLegacyAccount(await findLegacyAccount().catch(() => null));
+      if (!stored) {
+        if (cloud.isCloudConfigured()) {
+          try {
+            const userId = await cloud.ensureUserId();
+            const remote = await cloud.fetchProfile(userId);
+            if (remote) {
+              await saveProfile(remote);
+              profileRef.current = remote;
+              setProfile(remote);
+              cloudRef.current = { userId, syncedAt: remote.updatedAt };
+              await saveCloudState(cloudRef.current);
+              setStatus('ready');
+              return;
+            }
+          } catch {
+            // Offline or unauthenticated initially; continue to setup flow
+          }
+        }
+        setLegacyAccount(await findLegacyAccount().catch(() => null));
+      }
       setStatus(stored ? 'ready' : 'needsSetup');
     })().catch(() => setStatus('needsSetup'));
   }, []);
@@ -145,9 +164,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       await commit(next);
       await clearLegacyAuth().catch(() => undefined);
       setLegacyAccount(null);
+
+      // Attempt synchronous database upload when online
+      if (cloud.isCloudConfigured()) {
+        try {
+          const userId = await cloud.ensureUserId();
+          await cloud.upsertProfile(userId, next);
+          cloudRef.current = { userId, syncedAt: next.updatedAt };
+          await saveCloudState(cloudRef.current);
+        } catch (e) {
+          if (__DEV__) console.warn('[createProfile] initial cloud sync deferred (offline/network)', e);
+          syncSoon();
+        }
+      }
+
       setStatus('ready');
     },
-    [commit, legacyAccount],
+    [commit, legacyAccount, syncSoon],
   );
 
   const updateProfile = useCallback(

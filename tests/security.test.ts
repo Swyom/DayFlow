@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { LIMITS } from '../src/constants/limits';
 import { dataReducer, EMPTY_DATA } from '../src/state/dataReducer';
-import { parseLegacyAccounts, parsePreferences, parseProfile, parseStepsState, parseUserData } from '../src/state/schema';
+import { parseLegacyAccounts, parsePreferences, parseProfile, parseScreenTimeState, parseStepsState, parseUserData } from '../src/state/schema';
 import { validateEmail } from '../src/utils/validation';
 
 describe('input validation', () => {
@@ -107,5 +107,25 @@ describe('stored data parsing', () => {
     assert.equal(s.days['2026-10-16'].goal, LIMITS.stepGoalMin);
     assert.deepEqual(s.unsynced, ['2026-10-15']);
     assert.equal(s.cloudUserId, null);
+  });
+
+  it('cleans stored local screen time history', () => {
+    const raw = {
+      '2026-10-16': [
+        { packageName: 'com.whatsapp', appName: 'WhatsApp', usageMs: 3_600_000 },
+        { packageName: 'com.android.settings', appName: '', usageMs: 120_000 },
+        { packageName: 'bad', appName: 'Bad', usageMs: -50 },
+        { packageName: '', appName: 'No pkg', usageMs: 5000 },
+        null,
+      ],
+      'invalid-date': [{ packageName: 'com.test', usageMs: 1000 }],
+      '2026-10-15': 'not an array',
+    };
+    const s = parseScreenTimeState(raw);
+    assert.deepEqual(Object.keys(s), ['2026-10-16']);
+    assert.equal(s['2026-10-16'].length, 2);
+    assert.equal(s['2026-10-16'][0].packageName, 'com.whatsapp');
+    assert.equal(s['2026-10-16'][0].usageMs, 3_600_000);
+    assert.equal(s['2026-10-16'][1].appName, 'com.android.settings');
   });
 });

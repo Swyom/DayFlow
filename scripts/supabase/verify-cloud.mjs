@@ -1,12 +1,14 @@
 /**
- * End-to-end check of DayFlow's Supabase setup: persistence, no-duplicate upserts and
- * Row Level Security. Uses only the public anon key from .env, exactly like the app.
+ * End-to-end check of DayFlow's Supabase setup: persistence, no-duplicate upserts,
+ * strict validation constraints, and Row Level Security for profiles and avatars.
+ * Uses only the public anon key from .env, exactly like the app.
  *
  *   node --env-file=.env scripts/supabase/verify-cloud.mjs
  *
- * It creates two temporary anonymous users, writes data as user A, checks that user B and
- * a signed-out client can't read or change it, then deletes both users (and their rows and
- * files) with delete_current_user(). Requires the migration to be applied and anonymous
+ * It creates two temporary anonymous users, writes profile & avatar data as user A,
+ * checks that user B and a signed-out client can't read or change it, verifies
+ * constraint validation, and cleans up both users (and their rows and files)
+ * with delete_current_user(). Requires the migration to be applied and anonymous
  * sign-ins to be enabled.
  */
 import { createClient } from '@supabase/supabase-js';
@@ -47,7 +49,7 @@ try {
   const idA = sa.user.id;
   const idB = sb.user.id;
 
-  // ---- Persistence and upserts ------------------------------------------------------
+  // ---- Profile Persistence and Upserts ----------------------------------------------
   const profile = {
     id: idA,
     full_name: 'RLS Check',
@@ -71,40 +73,36 @@ try {
   check(rowsA?.length === 1 && rowsA[0].full_name === 'RLS Check 2', 'profile upsert updated in place (1 row)');
   check(rowsA?.[0] && new Date(rowsA[0].registered_at).toISOString() === '2026-01-01T10:00:00.000Z', 'registered_at never changes after insert');
 
-  const day = { user_id: idA, day: '2026-10-16', steps: 1000, goal: 8000 };
-  await a.from('daily_steps').upsert(day, { onConflict: 'user_id,day' });
-  await a.from('daily_steps').upsert({ ...day, steps: 2500 }, { onConflict: 'user_id,day' });
-  const { data: steps } = await a.from('daily_steps').select('steps');
-  check(steps?.length === 1 && steps[0].steps === 2500, 'daily_steps upsert keeps one row per day');
-
-  const summary = { user_id: idA, day: '2026-10-16', total_ms: 3_600_000, app_count: 1, platform: 'android', captured_at: new Date().toISOString() };
-  check(!(await a.from('screen_time_summaries').upsert(summary, { onConflict: 'user_id,day' })).error, 'A can save a screen-time summary');
-
+  // ---- Avatar Storage ---------------------------------------------------------------
   const png = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
   check(!(await a.storage.from('avatars').upload(`${idA}/avatar-test.jpg`, png, { contentType: 'image/jpeg' })).error, 'A can upload to its avatar folder');
   check(!!(await a.storage.from('avatars').upload(`${idB}/avatar-evil.jpg`, png, { contentType: 'image/jpeg' })).error, "A can't upload into B's folder");
 
-  // ---- Isolation ------------------------------------------------------------------------
-  for (const table of ['profiles', 'daily_steps', 'screen_time_summaries']) {
-    const { data } = await b.from(table).select('*');
-    check((data ?? []).length === 0, `B can't read A's ${table}`);
-    const { data: anonData } = await anon.from(table).select('*');
-    check((anonData ?? []).length === 0, `signed-out client can't read ${table}`);
-  }
+  // ---- Row Level Security & Isolation ------------------------------------------------
+  const { data: bProfiles } = await b.from('profiles').select('*');
+  check((bProfiles ?? []).length === 0, "B can't read A's profile");
+
+  const { data: anonProfiles } = await anon.from('profiles').select('*');
+  check((anonProfiles ?? []).length === 0, 'signed-out client can\'t read profiles');
+
   const { data: hijack } = await b.from('profiles').update({ full_name: 'Hacked' }).eq('id', idA).select();
   check((hijack ?? []).length === 0, "B can't update A's profile");
-  const { data: wiped } = await b.from('daily_steps').delete().eq('user_id', idA).select();
-  check((wiped ?? []).length === 0, "B can't delete A's steps");
-  check(!!(await b.from('daily_steps').insert({ user_id: idA, day: '2026-10-17', steps: 1, goal: 8000 })).error, "B can't insert rows for A");
+
   check(!!(await b.from('profiles').insert({ ...profile, id: idA })).error, "B can't create a profile with A's id");
+
   const { data: files } = await b.storage.from('avatars').list(idA);
   check((files ?? []).length === 0, "B can't list A's avatar files");
   check(!!(await b.storage.from('avatars').download(`${idA}/avatar-test.jpg`)).error, "B can't download A's avatar");
 
-  // ---- Constraints --------------------------------------------------------------------
-  check(!!(await a.from('daily_steps').upsert({ ...day, steps: -5 }, { onConflict: 'user_id,day' })).error, 'negative steps are rejected');
+  // ---- Strict Validation Constraints -------------------------------------------------
   check(!!(await a.from('profiles').upsert({ ...profile, age: 7 }, { onConflict: 'id' })).error, 'under-13 age is rejected');
   check(!!(await a.from('profiles').upsert({ ...profile, mobile: 'call me' }, { onConflict: 'id' })).error, 'malformed mobile is rejected');
+  check(!!(await a.from('profiles').upsert({ ...profile, email: 'not-an-email' }, { onConflict: 'id' })).error, 'malformed email is rejected');
+  check(!!(await a.from('profiles').upsert({ ...profile, full_name: '   ' }, { onConflict: 'id' })).error, 'blank full name is rejected');
+  check(
+    !!(await a.from('profiles').upsert({ ...profile, location_source: 'gps', latitude: null, longitude: null }, { onConflict: 'id' })).error,
+    'gps location without coordinates is rejected',
+  );
 } catch (e) {
   console.error('ERROR', e.message ?? e);
   failures++;

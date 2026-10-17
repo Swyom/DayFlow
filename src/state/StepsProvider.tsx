@@ -6,15 +6,12 @@ import { STORAGE_KEYS } from '../constants/app';
 import {
   applySamples,
   EMPTY_STEPS,
-  markSynced,
-  mergeRemoteDays,
   setDaySteps,
   setTodayGoal,
   stepsOn,
 } from '../domain/steps';
 import { usePersistentStore } from '../hooks/usePersistentStore';
 import { useToday } from '../hooks/useToday';
-import * as cloud from '../services/cloudSync';
 import type { DateKey, StepDay, StepSample, StepsState } from '../types/models';
 import { addDays, fromDateKey, todayKey } from '../utils/date';
 import { useProfile, useProfileContext } from './ProfileProvider';
@@ -30,9 +27,7 @@ export type StepsStatus = 'loading' | 'unsupported' | 'needsPermission' | 'denie
 type Action =
   | { type: 'samples'; samples: StepSample[]; goal: number }
   | { type: 'day'; day: DateKey; steps: number; goal: number }
-  | { type: 'goal'; day: DateKey; goal: number }
-  | { type: 'merge'; remote: cloud.RemoteStepDay[] }
-  | { type: 'synced'; days: DateKey[]; userId: string };
+  | { type: 'goal'; day: DateKey; goal: number };
 
 function reducer(state: StepsState, action: Action): StepsState {
   switch (action.type) {
@@ -42,12 +37,6 @@ function reducer(state: StepsState, action: Action): StepsState {
       return setDaySteps(state, action.day, action.steps, action.goal);
     case 'goal':
       return setTodayGoal(state, action.day, action.goal);
-    case 'merge':
-      return mergeRemoteDays(state, action.remote);
-    case 'synced': {
-      const next = markSynced(state, action.days);
-      return next.cloudUserId === action.userId ? next : { ...next, cloudUserId: action.userId };
-    }
   }
 }
 
@@ -65,10 +54,7 @@ type StepsContextValue = {
 const StepsContext = createContext<StepsContextValue | null>(null);
 
 const isAndroid = Platform.OS === 'android';
-const SYNC_DELAY_MS = 60_000; // Batch steps uploads to 1/min to minimize Supabase load
 const LIVE_FLUSH_MS = 3_000;
-/** How far back a restore from the cloud reaches. */
-const RESTORE_DAYS = 90;
 
 const toSample = (s: NativeStepSample): StepSample => ({ t: s.t, counter: s.counter, boot: s.boot });
 
@@ -94,7 +80,7 @@ async function iosDayTotals(days: DateKey[]): Promise<{ day: DateKey; steps: num
 /** Today's steps, goal and history for the device owner. Counts in the background on Android. */
 export function StepsProvider({ children }: { children: ReactNode }) {
   const profile = useProfile();
-  const { setStepGoal, ensureCloudReady } = useProfileContext();
+  const { setStepGoal } = useProfileContext();
   const today = useToday();
   const goal = profile.stepGoal;
   const goalRef = useRef(goal);
@@ -206,49 +192,6 @@ export function StepsProvider({ children }: { children: ReactNode }) {
     },
     [setStepGoal, run],
   );
-
-  // ---- Cloud sync -------------------------------------------------------------------------
-
-  const restored = useRef(false);
-  const sync = useCallback(async () => {
-    if (!cloud.isCloudConfigured()) return;
-    const userId = await ensureCloudReady();
-    if (!restored.current) {
-      restored.current = true;
-      const remote = await cloud.fetchStepDays(userId, addDays(todayKey(), -RESTORE_DAYS)).catch(() => null);
-      if (remote?.length) await run({ type: 'merge', remote });
-    }
-    const s = getState();
-    // A new cloud identity (e.g. after reinstalling the cloud side) gets the full history.
-    const days = s.cloudUserId === userId ? s.unsynced : Object.keys(s.days);
-    await cloud.upsertStepDays(
-      userId,
-      days.filter((d) => s.days[d]).map((d) => ({ day: d, steps: s.days[d].steps, goal: s.days[d].goal })),
-    );
-    await run({ type: 'synced', days, userId });
-  }, [ensureCloudReady, getState, run]);
-
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const needsSync = ready && (state.unsynced.length > 0 || !restored.current);
-  useEffect(() => {
-    if (!needsSync) return;
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      sync().catch((e) => __DEV__ && console.warn('[sync] steps upload failed', e));
-    }, restored.current ? SYNC_DELAY_MS : 1500);
-    return () => {
-      if (syncTimer.current) clearTimeout(syncTimer.current);
-    };
-  }, [needsSync, state.unsynced, sync]);
-
-  // Retry a failed upload (e.g. made offline) when the app comes back to the foreground.
-  useEffect(() => {
-    if (!ready) return;
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && getState().unsynced.length) sync().catch(() => undefined);
-    });
-    return () => sub.remove();
-  }, [ready, getState, sync]);
 
   const value = useMemo<StepsContextValue>(
     () => ({ status, today, todaySteps: stepsOn(state, today), goal, days: state.days, enable, setGoal }),

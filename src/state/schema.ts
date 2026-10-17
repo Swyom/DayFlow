@@ -3,6 +3,7 @@ import { LIMITS } from '../constants/limits';
 import { toAccentHue } from '../theme/palette';
 import { clampGoal } from '../domain/steps';
 import type {
+  AppUsage,
   CloudState,
   DateKey,
   Habit,
@@ -202,4 +203,27 @@ export function parseStepsState(raw: unknown): StepsState {
   const unsynced = [...new Set(list(s.unsynced, 3660).filter((d): d is DateKey => typeof d === 'string' && !!dateKey(d) && d in days))];
   const cloudUserId = typeof s.cloudUserId === 'string' && /^[0-9a-f-]{36}$/i.test(s.cloudUserId) ? s.cloudUserId : null;
   return { days, lastSample: parseSample(s.lastSample), unsynced, cloudUserId };
+}
+
+/** Parses persistent local screen-time history read from device storage. */
+export function parseScreenTimeState(raw: unknown): Record<DateKey, AppUsage[]> {
+  if (!isObj(raw)) return {};
+  const out: Record<DateKey, AppUsage[]> = {};
+  for (const [day, listRaw] of Object.entries(raw)) {
+    if (!dateKey(day) || !Array.isArray(listRaw)) continue;
+    const apps: AppUsage[] = [];
+    for (const a of listRaw) {
+      if (!isObj(a)) continue;
+      const packageName = str(a.packageName, 255).trim();
+      const usageMs = int(a.usageMs, 0, 86_400_000, 0);
+      if (!packageName || usageMs <= 0) continue;
+      apps.push({
+        packageName,
+        appName: str(a.appName, 255).trim() || packageName,
+        usageMs,
+      });
+    }
+    if (apps.length > 0) out[day] = apps;
+  }
+  return out;
 }

@@ -1,11 +1,11 @@
-import type { AppUsage, DateKey, Profile } from '../types/models';
+import type { Profile } from '../types/models';
 import { AVATAR_BUCKET, ensureUserId, supabase } from './supabase';
 
 /**
- * Reads and writes DayFlow's Supabase tables. Every write is an upsert keyed by the
- * table's primary key (profile id, user+day, user+day+app), so retries and repeated
- * syncs update rows in place and never create duplicates. RLS on the server makes sure
- * the signed-in anonymous user can only touch their own rows.
+ * Reads and writes DayFlow's Supabase profiles and avatar bucket.
+ * Every profile write is an upsert keyed 1:1 by auth.users id, so retries and repeated
+ * syncs update rows in place and never create duplicate records. RLS on the server ensures
+ * the authenticated user can only access their own profile and avatar files.
  */
 
 function client() {
@@ -47,44 +47,29 @@ export async function upsertProfile(userId: string, p: Profile) {
   );
 }
 
-export type RemoteStepDay = { day: DateKey; steps: number; goal: number };
-
-export async function upsertStepDays(userId: string, days: RemoteStepDay[]) {
-  if (!days.length) return;
-  check(
-    await client()
-      .from('daily_steps')
-      .upsert(
-        days.map((d) => ({ user_id: userId, day: d.day, steps: d.steps, goal: d.goal })),
-        { onConflict: 'user_id,day' },
-      ),
-  );
-}
-
-export async function fetchStepDays(userId: string, fromDay: DateKey): Promise<RemoteStepDay[]> {
-  const res = check(
-    await client().from('daily_steps').select('day, steps, goal').eq('user_id', userId).gte('day', fromDay).order('day'),
-  );
-  return (res.data ?? []) as RemoteStepDay[];
-}
-
-/** Replaces one day's screen-time summary. */
-export async function upsertScreenTime(userId: string, day: DateKey, apps: AppUsage[], platform: 'android' | 'ios') {
+/** Fetches the remote profile for the signed-in user if it exists in Supabase. */
+export async function fetchProfile(userId: string): Promise<Profile | null> {
   const db = client();
-  const totalMs = apps.reduce((sum, a) => sum + a.usageMs, 0);
-  check(
-    await db.from('screen_time_summaries').upsert(
-      {
-        user_id: userId,
-        day,
-        total_ms: Math.min(totalMs, 86_400_000),
-        app_count: apps.length,
-        platform,
-        captured_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,day' },
-    ),
-  );
+  const res = check(await db.from('profiles').select('*').eq('id', userId).maybeSingle());
+  const data = res.data;
+  if (!data) return null;
+  return {
+    localId: userId,
+    fullName: data.full_name,
+    email: data.email,
+    mobile: data.mobile,
+    age: data.age,
+    location: {
+      label: data.location_label,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      source: data.location_source,
+    },
+    registeredAt: data.registered_at,
+    avatarPath: data.avatar_path,
+    stepGoal: data.step_goal,
+    updatedAt: data.updated_at,
+  };
 }
 
 // ---- Profile picture (private bucket) ---------------------------------------------
@@ -121,7 +106,7 @@ export async function signedAvatarUrl(path: string): Promise<string> {
 
 /**
  * Deletes everything this device stored in Supabase: avatar files, then the anonymous
- * auth user (the database cascades to the profile, steps and screen-time rows).
+ * auth user (the database cascades to the profile row).
  */
 export async function deleteCloudAccount() {
   const db = client();

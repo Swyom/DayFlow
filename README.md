@@ -83,17 +83,17 @@ Expo dashboard). `eas.json` and the update workflow already use those environmen
 ### 2. Supabase
 
 1. Run `supabase/migrations/20261016120000_dayflow_cloud_profile.sql`. Either paste it into the
-   SQL editor, or run `supabase link` and then `supabase db push`. It creates the `profiles`,
-   `daily_steps`, `screen_time_summaries` and `app_usage` tables (with constraints, indexes and
-   `updated_at` triggers), RLS policies, the private `avatars` storage bucket and its policies, and
-   `delete_current_user()` for account deletion. It's safe to run again.
+   SQL editor, or run `supabase link` and then `supabase db push`. It sets up the `profiles` table
+   (with validation constraints and `updated_at` triggers), drops retired remote activity tables
+   (activity data is stored strictly on-device), configures RLS policies, the private `avatars`
+   storage bucket, and `delete_current_user()` for account deletion. It's safe to run again.
 2. **Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins".** Without this the
-   app works offline but can't sync.
+   app works offline but can't sync the user profile.
 3. Recommended: turn on CAPTCHA or keep the default rate limits for anonymous sign-ins to limit
    abuse.
 4. Check the setup: `node --env-file=.env scripts/supabase/verify-cloud.mjs`. It creates two
-   temporary anonymous users, tests saving, upserts, constraints and that neither user can read or
-   change the other's rows or photos, then deletes both users.
+   temporary anonymous users, tests profile upsert, strict constraints, avatar storage isolation,
+   and verifies that neither user can read or change the other's profile or photos, then deletes both users.
 
 ### 3. AdMob
 

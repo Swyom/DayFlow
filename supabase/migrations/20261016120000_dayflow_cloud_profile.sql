@@ -1,9 +1,14 @@
--- DayFlow cloud backup: profiles, daily steps, screen-time summaries, per-app usage,
--- and the private `avatars` storage bucket.
+-- DayFlow cloud storage: mandatory profiles and private `avatars` storage bucket.
+--
+-- Privacy & Architecture:
+-- Activity data (daily step counts, screen-time summaries, and per-app usage) is
+-- strictly stored locally on the user's device (AsyncStorage + native Android modules)
+-- for maximum privacy, zero remote database bloat, and offline availability.
+-- No activity data is ever uploaded, synced, or stored in Supabase.
 --
 -- Identity: each device signs in as an anonymous Supabase Auth user (Auth → Sign In /
--- Providers → "Allow anonymous sign-ins" must be ON). Every row is owned by auth.uid()
--- and Row Level Security limits every table and the bucket to the owner's own rows.
+-- Providers → "Allow anonymous sign-ins" must be ON). Every profile row is owned by auth.uid()
+-- (keyed 1:1) and Row Level Security limits public.profiles and the avatars bucket to the owner.
 -- Safe to re-run: objects are created only if missing and policies are replaced.
 
 -- ---------------------------------------------------------------------------
@@ -20,6 +25,14 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Drop retired activity tables (activity data is strictly kept on-device)
+-- ---------------------------------------------------------------------------
+
+drop table if exists public.app_usage cascade;
+drop table if exists public.daily_steps cascade;
+drop table if exists public.screen_time_summaries cascade;
 
 -- ---------------------------------------------------------------------------
 -- profiles: one row per user (1:1 with auth.users)
@@ -46,7 +59,7 @@ create table if not exists public.profiles (
   )
 );
 
-comment on table public.profiles is 'DayFlow user profile (one per anonymous auth user).';
+comment on table public.profiles is 'DayFlow mandatory user profile (one per auth user, strictly validated).';
 comment on column public.profiles.avatar_path is 'Object path in the private avatars bucket: <user id>/<file>.';
 
 -- registered_at comes from the device (the profile may be created offline) but can't be in
@@ -92,63 +105,11 @@ create trigger profiles_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
--- daily_steps: one row per user per local calendar day
--- ---------------------------------------------------------------------------
-
-create table if not exists public.daily_steps (
-  user_id     uuid not null references public.profiles (id) on delete cascade,
-  day         date not null,
-  steps       integer not null default 0 check (steps between 0 and 200000),
-  -- Step goal in effect for that day, so history keeps its original target.
-  goal        integer not null check (goal between 500 and 100000),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  primary key (user_id, day)
-);
-
-comment on table public.daily_steps is 'Steps counted on the device per local calendar day.';
-
--- The primary key (user_id, day) also serves "latest days for a user" queries.
-drop trigger if exists daily_steps_set_updated_at on public.daily_steps;
-create trigger daily_steps_set_updated_at
-  before update on public.daily_steps
-  for each row execute function public.set_updated_at();
-
--- ---------------------------------------------------------------------------
--- screen_time_summaries: one row per user per day
--- app_usage: one row per user per day per app
--- ---------------------------------------------------------------------------
-
-create table if not exists public.screen_time_summaries (
-  user_id      uuid not null references public.profiles (id) on delete cascade,
-  day          date not null,
-  total_ms     bigint not null check (total_ms between 0 and 86400000),
-  app_count    integer not null check (app_count >= 0),
-  platform     text not null check (platform in ('android', 'ios')),
-  captured_at  timestamptz not null,
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now(),
-  primary key (user_id, day)
-);
-
-comment on table public.screen_time_summaries is 'Total foreground app time per day, read from Android usage stats.';
-
-drop trigger if exists screen_time_summaries_set_updated_at on public.screen_time_summaries;
-create trigger screen_time_summaries_set_updated_at
-  before update on public.screen_time_summaries
-  for each row execute function public.set_updated_at();
-
--- app_usage table is retired and kept local on device for maximum privacy.
-drop table if exists public.app_usage cascade;
-
--- ---------------------------------------------------------------------------
 -- Row Level Security: owners only. No policies for the `anon` role at all.
 -- (select auth.uid()) is evaluated once per statement instead of once per row.
 -- ---------------------------------------------------------------------------
 
 alter table public.profiles enable row level security;
-alter table public.daily_steps enable row level security;
-alter table public.screen_time_summaries enable row level security;
 
 -- profiles
 drop policy if exists "profiles: owner can read" on public.profiles;
@@ -167,44 +128,10 @@ drop policy if exists "profiles: owner can delete" on public.profiles;
 create policy "profiles: owner can delete" on public.profiles
   for delete to authenticated using ((select auth.uid()) = id);
 
--- daily_steps
-drop policy if exists "daily_steps: owner can read" on public.daily_steps;
-create policy "daily_steps: owner can read" on public.daily_steps
-  for select to authenticated using ((select auth.uid()) = user_id);
-
-drop policy if exists "daily_steps: owner can insert" on public.daily_steps;
-create policy "daily_steps: owner can insert" on public.daily_steps
-  for insert to authenticated with check ((select auth.uid()) = user_id);
-
-drop policy if exists "daily_steps: owner can update" on public.daily_steps;
-create policy "daily_steps: owner can update" on public.daily_steps
-  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
-
-drop policy if exists "daily_steps: owner can delete" on public.daily_steps;
-create policy "daily_steps: owner can delete" on public.daily_steps
-  for delete to authenticated using ((select auth.uid()) = user_id);
-
--- screen_time_summaries
-drop policy if exists "screen_time_summaries: owner can read" on public.screen_time_summaries;
-create policy "screen_time_summaries: owner can read" on public.screen_time_summaries
-  for select to authenticated using ((select auth.uid()) = user_id);
-
-drop policy if exists "screen_time_summaries: owner can insert" on public.screen_time_summaries;
-create policy "screen_time_summaries: owner can insert" on public.screen_time_summaries
-  for insert to authenticated with check ((select auth.uid()) = user_id);
-
-drop policy if exists "screen_time_summaries: owner can update" on public.screen_time_summaries;
-create policy "screen_time_summaries: owner can update" on public.screen_time_summaries
-  for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
-
-drop policy if exists "screen_time_summaries: owner can delete" on public.screen_time_summaries;
-create policy "screen_time_summaries: owner can delete" on public.screen_time_summaries
-  for delete to authenticated using ((select auth.uid()) = user_id);
-
 -- Table privileges: signed-in users only (RLS still applies); nothing for `anon`.
-revoke all on public.profiles, public.daily_steps, public.screen_time_summaries from anon;
+revoke all on public.profiles from anon;
 grant select, insert, update, delete
-  on public.profiles, public.daily_steps, public.screen_time_summaries
+  on public.profiles
   to authenticated;
 
 -- ---------------------------------------------------------------------------

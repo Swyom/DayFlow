@@ -10,8 +10,8 @@ export const STORAGE_KEYS = {
   cloud: 'dayflow:cloud:v1',
   userData: (localId: string) => `dayflow:data:v1:${localId}`,
   steps: (localId: string) => `dayflow:steps:v1:${localId}`,
-  /** Last screen-time upload per day (avoids re-uploading unchanged days). */
-  screenTimeSync: (localId: string) => `dayflow:screentime-sync:v1:${localId}`,
+  /** Persistent local screen-time history (keeps daily summaries on device across restarts). */
+  screenTime: (localId: string) => `dayflow:screentime:v1:${localId}`,
 
   // Removed email/password log-in (≤ v2.1). Read once to carry data over, then deleted.
   legacyAccounts: 'dayflow:accounts:v1',

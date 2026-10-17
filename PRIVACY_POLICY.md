@@ -33,23 +33,20 @@ We only collect data strictly necessary to provide and personalize DayFlow's cor
 
 ---
 
-### B. Health & Fitness Data (Stored in Cloud / Supabase)
+### B. Health & Fitness Data (Processed and Stored Locally ONLY)
 
-| Data Collected | Why We Collect It (Purpose) | Where It Is Stored |
+| Data Collected | Why We Access It (Purpose) | Storage & Collection Status |
 | :--- | :--- | :--- |
-| **Daily Step Counts** | Collected via your device's built-in motion sensor / pedometer hardware (`ACTIVITY_RECOGNITION`) to track daily steps, distance, and calorie estimates. | Locally & Backed up to Supabase |
-| **Daily Step Goal** | Your personal target (e.g., 8,000 steps) to render the daily activity progress ring. | Locally & Backed up to Supabase |
-
-**Why is Fitness Data backed up?**  
-To power your 7-day and monthly history charts, preserve your streaks, and ensure your progress is not wiped if you change or reinstall your phone.
+| **Daily Step Counts** | Collected via your device's built-in motion sensor / pedometer hardware (`ACTIVITY_RECOGNITION`) to track daily steps, distance, and calorie estimates. | ❌ **NOT UPLOADED TO DATABASE** (Stored strictly on-device in persistent local storage. Never synced or uploaded to Supabase or any remote server). |
+| **Daily Step Goal** | Your personal target (e.g., 8,000 steps) to render the daily activity progress ring. | Stored strictly locally on-device. |
 
 ---
 
-### C. Digital Wellbeing & Screen Time (Processed Locally ONLY)
+### C. Digital Wellbeing & Screen Time (Processed and Stored Locally ONLY)
 
-| Data Accessed | Why We Access It | Cloud Collection Status |
+| Data Accessed | Why We Access It | Storage & Collection Status |
 | :--- | :--- | :--- |
-| **App Usage & Screen Time** | Read via Android's `UsageStatsManager` after you grant explicit permission in Settings. Used to draw the interactive Donut Chart and show total daily screen time. | ❌ **NOT COLLECTED** (Processed 100% on-device only. Never uploaded to our servers or Supabase). |
+| **App Usage & Screen Time** | Read via Android's `UsageStatsManager` after you grant explicit permission in Settings. Used to display the interactive Donut Chart, app-by-app usage, and total daily screen time. | ❌ **NOT UPLOADED TO DATABASE** (Stored strictly on-device in persistent local storage with up to 90-day retention. Never synced or uploaded to Supabase or any remote server). |
 
 ---
 
@@ -67,8 +64,9 @@ We implement strict industry-standard security practices to protect your data:
 
 1. **Encryption in Transit:** All communication between the DayFlow app and our Supabase backend is encrypted using **HTTPS / TLS 1.3**.
 2. **Encryption at Rest:** All data stored in the database and photo storage is encrypted at rest using **AES-256**.
-3. **Database Row Level Security (RLS):** Every database row is strictly bound to your individual anonymous user ID (`auth.uid()`). No other user or device can read, query, modify, or delete your data.
-4. **No Sale of Data:** We **never** sell, rent, trade, or share your personal information with data brokers or commercial third parties.
+3. **Database Row Level Security (RLS):** Every database profile row and avatar file is strictly bound to your individual anonymous user ID (`auth.uid()`). No other user or device can read, query, modify, or delete your data.
+4. **Local Data Isolation:** Activity data (step counts, screen time, habits, and tasks) resides in private device-local sandbox storage and is never exposed or uploaded remotely.
+5. **No Sale of Data:** We **never** sell, rent, trade, or share your personal information with data brokers or commercial third parties.
 
 ---
 
@@ -83,8 +81,8 @@ You can permanently delete your entire profile and all cloud records at any mome
 3. Confirm deletion.
 
 **What happens upon deletion:**
-- Your local profile, habits, tasks, and step records are wiped from your device.
-- The `delete_current_user()` database procedure executes immediately in Supabase, permanently purging your user record, step history, and stored profile photos from the server.
+- Your local profile, habits, tasks, step counts, and screen-time history are permanently wiped from your device.
+- The `delete_current_user()` database procedure executes immediately in Supabase, permanently purging your user record and stored profile photos from the server.
 
 ### Manual Deletion Requests:
 You may also request complete data deletion by emailing us at **swyomsanjog2004@gmail.com**. We will process and verify your request within 48 hours.

@@ -48,9 +48,10 @@ export default function ProfileSetupScreen() {
     try {
       await createProfile(cleanProfileInput(form));
       // Navigation switches to the app automatically once the profile exists.
-    } catch {
+    } catch (e) {
       setSaving(false);
-      notify('Couldn’t save your profile', 'Check that your phone has free storage, then try again.');
+      const msg = e instanceof Error && e.message ? e.message : 'Please check your connection and storage, then try again.';
+      notify('Couldn’t save your profile', msg);
     }
   };
 

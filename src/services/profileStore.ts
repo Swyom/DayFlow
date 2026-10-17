@@ -16,7 +16,7 @@ export const saveCloudState = (cloud: CloudState) => writeJSON(STORAGE_KEYS.clou
 export async function removeLocalProfile(localId: string) {
   await removeKey(STORAGE_KEYS.userData(localId));
   await removeKey(STORAGE_KEYS.steps(localId));
-  await removeKey(STORAGE_KEYS.screenTimeSync(localId));
+  await removeKey(STORAGE_KEYS.screenTime(localId));
   await removeKey(STORAGE_KEYS.cloud);
   await removeKey(STORAGE_KEYS.profile);
 }

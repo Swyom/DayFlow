@@ -17,6 +17,8 @@ import { formatDuration, formatPercent, OTHER_KEY, spokenDuration, summarizeUsag
 import { useResponsive } from '../../hooks/useResponsive';
 import { useToday } from '../../hooks/useToday';
 import type { RootScreenProps } from '../../navigation/types';
+import { loadLocalScreenTime, saveLocalScreenTime, type StoredScreenTime } from '../../services/screenTimeStore';
+import { useProfile } from '../../state/ProfileProvider';
 import { radius, spacing, useTheme } from '../../theme';
 import type { AppUsage, DateKey } from '../../types/models';
 import { addDays, fromDateKey, lastNDays } from '../../utils/date';
@@ -51,6 +53,7 @@ export default function ScreenTimeScreen({ navigation }: RootScreenProps<'Screen
   const theme = useTheme();
   const { contentWidth } = useResponsive();
   const today = useToday();
+  const profile = useProfile();
   const [access, setAccess] = useState<Access>('checking');
   const [range, setRange] = useState<Range>('today');
   const [apps, setApps] = useState<AppUsage[] | null>(null);
@@ -78,24 +81,57 @@ export default function ScreenTimeScreen({ navigation }: RootScreenProps<'Screen
   const load = useCallback(async () => {
     setLoading(true);
     setFailed(false);
+    const targetDays = daysFor(range, today);
     try {
-      const perDay = await loadDays(daysFor(range, today));
+      const perDay = await loadDays(targetDays);
       const merged = new Map<string, AppUsage>();
+      let hasLiveReadings = false;
       for (const { apps: list } of perDay) {
+        if (list.length > 0) hasLiveReadings = true;
         for (const a of list) {
           const prev = merged.get(a.packageName);
           merged.set(a.packageName, prev ? { ...prev, usageMs: prev.usageMs + a.usageMs } : a);
         }
       }
+
+      // Persist live daily readings to local AsyncStorage so history survives app closes & restarts.
+      if (hasLiveReadings) {
+        void saveLocalScreenTime(profile.localId, perDay);
+      } else {
+        // Fallback: load historical days cached in local AsyncStorage.
+        const cached = await loadLocalScreenTime(profile.localId);
+        for (const day of targetDays) {
+          const cachedDay = cached[day] ?? [];
+          for (const a of cachedDay) {
+            const prev = merged.get(a.packageName);
+            merged.set(a.packageName, prev ? { ...prev, usageMs: prev.usageMs + a.usageMs } : a);
+          }
+        }
+      }
+
       setApps([...merged.values()]);
       setSelected(null);
     } catch {
-      setFailed(true);
-      checkAccess();
+      const cached = await loadLocalScreenTime(profile.localId).catch((): StoredScreenTime => ({}));
+      const merged = new Map<string, AppUsage>();
+      for (const day of targetDays) {
+        const cachedDay = cached[day] ?? [];
+        for (const a of cachedDay) {
+          const prev = merged.get(a.packageName);
+          merged.set(a.packageName, prev ? { ...prev, usageMs: prev.usageMs + a.usageMs } : a);
+        }
+      }
+      if (merged.size > 0) {
+        setApps([...merged.values()]);
+        setSelected(null);
+      } else {
+        setFailed(true);
+        checkAccess();
+      }
     } finally {
       setLoading(false);
     }
-  }, [range, today, checkAccess]);
+  }, [range, today, profile.localId, checkAccess]);
 
   useEffect(() => {
     if (access === 'granted') void load();
