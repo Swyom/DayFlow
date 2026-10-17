@@ -17,6 +17,7 @@ export const RECOVERY_MESSAGES = {
   rateLimited: 'You have reached the maximum number of recovery attempts. Please try again tomorrow.',
   offline: 'You’re offline. Connect to the internet to restore your account.',
   failed: 'Couldn’t reach DayFlow’s servers. Nothing was changed. Please try again.',
+  unavailable: 'Restoring deleted profiles isn’t available right now. Please try again later or create a new profile.',
 } as const;
 
 export type RecoveryErrors = { email?: string; mobile?: string };

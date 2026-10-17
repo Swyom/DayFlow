@@ -76,7 +76,7 @@ describe('stored data parsing', () => {
       email: 'ASHA@example.com',
       mobile: '+919876543210',
       age: 29,
-      location: { label: 'Bhubaneswar, Odisha, India', latitude: 20.29, longitude: 85.82, source: 'gps' },
+      location: { label: 'Bhubaneswar, Odisha, India', latitude: 20.29, longitude: 85.82, source: 'gps' }, // coordinates from an older version
       registeredAt: '2026-10-16T10:00:00.000Z',
       avatarPath: '0b5c1a7e-1111-2222-3333-444455556666/avatar-1.jpg',
       stepGoal: 9000,
@@ -91,7 +91,8 @@ describe('stored data parsing', () => {
     }
     assert.equal(parseProfile({ ...good, age: 5 }), null, 'too young');
     assert.equal(parseProfile({ ...good, avatarPath: '../../etc/passwd' })?.avatarPath, null);
-    assert.equal(parseProfile({ ...good, location: { ...good.location, latitude: 999 } })?.location.source, 'manual');
+    assert.deepEqual(parseProfile(good)?.location, { label: 'Bhubaneswar, Odisha, India', source: 'gps' }, 'stored coordinates are dropped');
+    assert.equal(parseProfile({ ...good, location: { label: 'Puri', source: 'satellite' } })?.location.source, 'manual');
     assert.equal(parseProfile({ ...good, stepGoal: 10 })?.stepGoal, LIMITS.stepGoalMin);
   });
 

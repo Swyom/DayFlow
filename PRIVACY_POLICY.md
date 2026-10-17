@@ -28,7 +28,7 @@ We only collect data strictly necessary to provide and personalize DayFlow's cor
 | **Email Address** | Used as a unique account identifier for cloud backup, account management, and profile recovery. | Supabase (Cloud Database) |
 | **Mobile Number** | Used for account verification and identity linking. | Supabase (Cloud Database) |
 | **Age** | To ensure compliance with global digital age regulations (such as COPPA, requiring users to be 13 or older). | Supabase (Cloud Database) |
-| **City / Location Label** | Displayed on your profile card. When using GPS, coordinates are captured only once upon your request to determine your city name. | Supabase (Cloud Database) |
+| **City / Location Label** | Displayed on your profile card. If you allow location access, your position is read once, on your phone, to look up the city name; the GPS coordinates are then discarded and never stored or uploaded. Only the city/region text is saved. | Supabase (Cloud Database) |
 | **Profile Photo (Avatar)** | Optional photo chosen by you to display on your profile and home header. | Supabase Storage (Private Bucket) |
 
 ---

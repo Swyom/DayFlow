@@ -19,30 +19,17 @@ const check = <T extends { error: unknown }>(res: T): T => {
   return res;
 };
 
+/** The email is already used by another profile (emails are unique; names are not). */
 export class DuplicateProfileError extends Error {
-  readonly field: 'email' | 'fullName' | 'both';
-  constructor(field: 'email' | 'fullName' | 'both', message: string) {
+  constructor(message = 'This email address is already in use by another profile.') {
     super(message);
     this.name = 'DuplicateProfileError';
-    this.field = field;
   }
 }
 
 export function parseCloudError(err: unknown): Error {
   if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
-    const raw = `${(err as { message?: string }).message || ''} ${(err as { details?: string }).details || ''}`;
-    const emailConflict = /email/i.test(raw);
-    const nameConflict = /name|full_name/i.test(raw);
-    if (emailConflict && nameConflict) {
-      return new DuplicateProfileError('both', 'This name and email are already in use by another profile.');
-    }
-    if (emailConflict) {
-      return new DuplicateProfileError('email', 'This email address is already in use by another profile.');
-    }
-    if (nameConflict) {
-      return new DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
-    }
-    return new DuplicateProfileError('both', 'A profile with these details already exists.');
+    return new DuplicateProfileError();
   }
   if (err instanceof Error) return err;
   return new Error(String(err));
@@ -52,28 +39,24 @@ export const isCloudConfigured = () => !!supabase;
 
 export { ensureUserId };
 
-/** Checks whether a full name or email is already taken by another account in Supabase. */
-export async function checkProfileConflicts(
-  fullName: string,
-  email: string,
-  excludeUserId?: string | null,
-): Promise<{ nameTaken: boolean; emailTaken: boolean }> {
-  if (!supabase) return { nameTaken: false, emailTaken: false };
+/**
+ * Whether another profile already uses this email. Only signed-in (anonymous) users may ask,
+ * and the answer is only "taken or not". If the check can't run, the unique index on the
+ * server still rejects a duplicate when the profile is saved.
+ */
+export async function isEmailTaken(email: string, excludeUserId?: string | null): Promise<boolean> {
+  if (!supabase) return false;
   try {
-    await ensureUserId(); // the check is only open to signed-in (anonymous) users
+    await ensureUserId();
     const res = await client().rpc('check_profile_conflicts', {
-      check_name: fullName.trim(),
+      check_name: '',
       check_email: email.trim().toLowerCase(),
       exclude_user_id: excludeUserId || null,
     });
-    if (res.error) return { nameTaken: false, emailTaken: false };
-    const data = res.data as { name_taken?: boolean; email_taken?: boolean } | null;
-    return {
-      nameTaken: !!data?.name_taken,
-      emailTaken: !!data?.email_taken,
-    };
+    if (res.error) return false;
+    return !!(res.data as { email_taken?: boolean } | null)?.email_taken;
   } catch {
-    return { nameTaken: false, emailTaken: false };
+    return false;
   }
 }
 
@@ -88,8 +71,6 @@ export async function upsertProfile(userId: string, p: Profile) {
         mobile: p.mobile,
         age: p.age,
         location_label: p.location.label,
-        latitude: p.location.latitude,
-        longitude: p.location.longitude,
         location_source: p.location.source,
         avatar_path: p.avatarPath,
         step_goal: p.stepGoal,
@@ -115,8 +96,6 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     age: data.age,
     location: {
       label: data.location_label,
-      latitude: data.latitude,
-      longitude: data.longitude,
       source: data.location_source,
     },
     registeredAt: data.registered_at,
@@ -183,6 +162,9 @@ export async function softDeleteCloudAccount(): Promise<{ deletionId: string | n
   const { data } = await db.auth.getSession();
   const userId = data.session?.user.id;
   if (!userId) return { deletionId: null, purgeAfter: null };
+  // Check before touching anything: if the recovery migration isn't installed, nothing is
+  // deleted and the person is offered permanent deletion instead.
+  await assertRecoveryAvailable();
   const listed = check(await db.storage.from(AVATAR_BUCKET).list(userId, { limit: 100 }));
   await removeAvatarFiles((listed.data ?? []).map((f) => `${userId}/${f.name}`));
   const res = check(await db.rpc('soft_delete_current_user'));
@@ -197,6 +179,20 @@ export async function softDeleteCloudAccount(): Promise<{ deletionId: string | n
 /** Thrown when recovery can't reach the server (offline, DNS, timeouts). */
 export class CloudUnavailableError extends Error {}
 
+/** Thrown when the server doesn't have recoverable deletion installed (migration not run). */
+export class RecoveryUnavailableError extends Error {}
+
+/** PostgREST: function not found (PGRST202) / Postgres: undefined function (42883). */
+const isMissingFunction = (e: { code?: string } | null | undefined) => e?.code === 'PGRST202' || e?.code === '42883';
+
+async function assertRecoveryAvailable() {
+  const res = await client().rpc('recovery_status');
+  if (!res.error) return;
+  if (isMissingFunction(res.error)) throw new RecoveryUnavailableError('Recoverable deletion is not set up on the server.');
+  if (!res.error.code) throw new CloudUnavailableError(res.error.message);
+  throw res.error;
+}
+
 /**
  * Asks the server to restore a deleted profile onto this device's (new) anonymous user.
  * Matching, the 7-day window and the attempt limits are all decided server-side.
@@ -210,6 +206,7 @@ export async function recoverDeletedProfile(email: string, mobile: string): Prom
     throw new CloudUnavailableError(e instanceof Error ? e.message : String(e));
   }
   if (res.error) {
+    if (isMissingFunction(res.error)) throw new RecoveryUnavailableError('Profile recovery is not set up on the server.');
     // PostgREST/network failures carry no status code; database errors do.
     if (!res.error.code) throw new CloudUnavailableError(res.error.message);
     throw res.error;

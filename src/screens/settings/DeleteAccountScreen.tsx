@@ -3,9 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import { AppText, Button, Card, Screen, ScreenHeader, SegmentedControl, TextField } from '../../components/ui';
 import { RECOVERY_DAYS } from '../../domain/recovery';
 import type { RootScreenProps } from '../../navigation/types';
-import { isCloudConfigured } from '../../services/cloudSync';
+import { isCloudConfigured, RecoveryUnavailableError } from '../../services/cloudSync';
 import { useProfile, useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
+import { confirm } from '../../utils/confirm';
 
 const CONFIRM_WORD = 'DELETE';
 type Mode = 'recoverable' | 'permanent';
@@ -29,7 +30,29 @@ export default function DeleteAccountScreen({ navigation }: RootScreenProps<'Del
     try {
       await deleteProfile(mode);
       // Navigation switches to profile setup automatically.
-    } catch {
+    } catch (e) {
+      if (e instanceof RecoveryUnavailableError) {
+        // Nothing has been deleted. Never fall back to permanent deletion without asking.
+        const permanent = await confirm({
+          title: 'Restorable deletion unavailable',
+          message:
+            'Keeping your profile for 7 days isn’t available right now, so nothing has been deleted. You can delete everything permanently instead, or cancel and try again later.',
+          confirmLabel: 'Delete permanently',
+          destructive: true,
+        });
+        if (permanent) {
+          setMode('permanent');
+          try {
+            await deleteProfile('permanent');
+            return;
+          } catch {
+            // fall through to the generic message
+          }
+        } else {
+          setDeleting(false);
+          return;
+        }
+      }
       setDeleting(false);
       setError('Couldn’t reach DayFlow’s servers. Check your internet connection and try again. Nothing was deleted.');
     }

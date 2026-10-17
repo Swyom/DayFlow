@@ -45,5 +45,6 @@ module.exports = ({ config }) => ({
         delayAppMeasurementInit: true,
       },
     ],
+    './plugins/withoutUnusedServices',
   ],
 });

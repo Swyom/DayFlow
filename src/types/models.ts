@@ -62,10 +62,9 @@ export type LegacyAccount = {
 export type LocationSource = 'gps' | 'manual';
 
 export type ProfileLocation = {
-  /** Human-readable place, e.g. "Bhubaneswar, Odisha, India". */
+  /** Human-readable place, e.g. "Bhubaneswar, Odisha, India". The only location data kept. */
   label: string;
-  latitude: number | null;
-  longitude: number | null;
+  /** How the label was obtained. GPS coordinates are used once on the device and never stored. */
   source: LocationSource;
 };
 

@@ -35,8 +35,6 @@ create table if not exists public.deleted_profiles (
   mobile            text not null,
   age               smallint not null,
   location_label    text not null,
-  latitude          double precision,
-  longitude         double precision,
   location_source   text not null,
   step_goal         integer not null,
   registered_at     timestamptz not null,
@@ -46,6 +44,10 @@ create table if not exists public.deleted_profiles (
 
 comment on table public.deleted_profiles is
   'Profiles deleted in the app, kept 7 days for verified recovery, then purged. No client access.';
+
+-- Earlier drafts kept GPS coordinates here too; only the city label is kept now.
+alter table public.deleted_profiles drop column if exists latitude;
+alter table public.deleted_profiles drop column if exists longitude;
 
 create index if not exists deleted_profiles_lookup_idx on public.deleted_profiles (email_norm, mobile);
 create index if not exists deleted_profiles_purge_idx on public.deleted_profiles (purge_after);
@@ -177,10 +179,10 @@ begin
     delete from public.deleted_profiles where email_norm = lower(btrim(p.email));
     insert into public.deleted_profiles (
       original_user_id, email_norm, full_name, email, mobile, age, location_label,
-      latitude, longitude, location_source, step_goal, registered_at, purge_after
+      location_source, step_goal, registered_at, purge_after
     ) values (
       uid, lower(btrim(p.email)), p.full_name, p.email, p.mobile, p.age, p.location_label,
-      p.latitude, p.longitude, p.location_source, p.step_goal, p.registered_at, now() + interval '7 days'
+      p.location_source, p.step_goal, p.registered_at, now() + interval '7 days'
     )
     returning * into retained;
   end if;
@@ -264,16 +266,16 @@ begin
   if valid and d.id is not null then
     begin
       insert into public.profiles (
-        id, full_name, email, mobile, age, location_label, latitude, longitude,
+        id, full_name, email, mobile, age, location_label,
         location_source, avatar_path, step_goal, registered_at
       ) values (
-        uid, d.full_name, d.email, d.mobile, d.age, d.location_label, d.latitude, d.longitude,
+        uid, d.full_name, d.email, d.mobile, d.age, d.location_label,
         d.location_source, null, d.step_goal, d.registered_at
       );
       delete from public.deleted_profiles where id = d.id;
       return jsonb_build_object('status', 'restored', 'deletion_id', d.id);
     exception when unique_violation then
-      -- Someone created a new profile with this name or email meanwhile: treat as not found.
+      -- Someone created a new profile with this email meanwhile: treat as not found.
       null;
     end;
   end if;
@@ -300,9 +302,22 @@ revoke all on function public.recover_deleted_profile(text, text) from public, a
 grant execute on function public.recover_deleted_profile(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Close an enumeration leak: signed-out clients could ask whether an email exists.
+-- Lets the app check that recoverable deletion is installed before deleting anything.
 -- ---------------------------------------------------------------------------
 
+create or replace function public.recovery_status()
+returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  select jsonb_build_object('available', true, 'retention_days', 7);
+$$;
+
+revoke all on function public.recovery_status() from public, anon;
+grant execute on function public.recovery_status() to authenticated;
+
+-- Close an enumeration leak: signed-out clients could ask whether an email exists.
 revoke execute on function public.check_profile_conflicts(text, text, uuid) from anon;
 
 -- ---------------------------------------------------------------------------

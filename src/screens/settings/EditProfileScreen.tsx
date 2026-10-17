@@ -58,16 +58,8 @@ export default function EditProfileScreen({ navigation }: RootScreenProps<'EditP
     } catch (e) {
       setSaving(false);
       if (e instanceof DuplicateProfileError) {
-        if (e.field === 'email') {
-          setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
-          notify('Email already registered', 'This email address is already in use by another profile. Please use a different email.');
-        } else if (e.field === 'fullName') {
-          setErrors((prev) => ({ ...prev, fullName: 'This name is already registered.' }));
-          notify('Name already registered', 'This name is already in use by another profile. Please enter a different name.');
-        } else {
-          setErrors((prev) => ({ ...prev, fullName: 'Already registered', email: 'Already in use' }));
-          notify('Already registered', 'This name and email are already in use by another profile. Please choose different details.');
-        }
+        setErrors((prev) => ({ ...prev, email: 'This email is already in use.' }));
+        notify('Email already registered', 'This email address is already in use by another profile. Please use a different email.');
         return;
       }
       notify('Couldn’t save your profile', 'Please try again.');

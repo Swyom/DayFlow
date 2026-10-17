@@ -57,8 +57,6 @@ const profileRow = (id, email, mobile) => ({
   mobile,
   age: 30,
   location_label: 'Bhubaneswar, Odisha, India',
-  latitude: null,
-  longitude: null,
   location_source: 'manual',
   avatar_path: null,
   step_goal: 9000,

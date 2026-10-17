@@ -5,7 +5,7 @@ import { AppText, Button, Card, Screen, ScreenHeader, TextField } from '../../co
 import { LIMITS } from '../../constants/limits';
 import { cleanRecoveryInput, RECOVERY_DAYS, RECOVERY_MESSAGES, RecoveryErrors, validateRecoveryInput } from '../../domain/recovery';
 import type { RootScreenProps } from '../../navigation/types';
-import { CloudUnavailableError } from '../../services/cloudSync';
+import { CloudUnavailableError, RecoveryUnavailableError } from '../../services/cloudSync';
 import { useProfileContext } from '../../state/ProfileProvider';
 import { spacing } from '../../theme';
 import { notify } from '../../utils/confirm';
@@ -52,7 +52,14 @@ export default function RecoverProfileScreen({ navigation }: RootScreenProps<'Re
         notify(TITLE, RECOVERY_MESSAGES.notFound);
       }
     } catch (e) {
-      notify(TITLE, e instanceof CloudUnavailableError ? RECOVERY_MESSAGES.offline : RECOVERY_MESSAGES.failed);
+      notify(
+        TITLE,
+        e instanceof RecoveryUnavailableError
+          ? RECOVERY_MESSAGES.unavailable
+          : e instanceof CloudUnavailableError
+            ? RECOVERY_MESSAGES.offline
+            : RECOVERY_MESSAGES.failed,
+      );
     } finally {
       setBusy(false);
     }

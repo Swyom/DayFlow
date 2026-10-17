@@ -157,10 +157,8 @@ export function parseProfile(raw: unknown): Profile | null {
   if (!localId || !fullName || !email || !/^\+?\d{7,15}$/.test(mobile) || age === null || !registeredAt || !loc || !label) {
     return null;
   }
-  const latitude = finite(loc.latitude, -90, 90);
-  const longitude = finite(loc.longitude, -180, 180);
-  const hasCoords = latitude !== null && longitude !== null;
-  const source: LocationSource = loc.source === 'gps' && hasCoords ? 'gps' : 'manual';
+  // Older versions also stored GPS coordinates; they are dropped here and never written again.
+  const source: LocationSource = loc.source === 'gps' ? 'gps' : 'manual';
   const avatarPath = typeof raw.avatarPath === 'string' && /^[\w-]+\/[\w.-]{1,200}$/.test(raw.avatarPath) ? raw.avatarPath : null;
   return {
     localId,
@@ -168,7 +166,7 @@ export function parseProfile(raw: unknown): Profile | null {
     email,
     mobile,
     age: Math.round(age),
-    location: { label, latitude: hasCoords ? latitude : null, longitude: hasCoords ? longitude : null, source },
+    location: { label, source },
     registeredAt,
     avatarPath,
     stepGoal: clampGoal(typeof raw.stepGoal === 'number' ? raw.stepGoal : LIMITS.stepGoalDefault),

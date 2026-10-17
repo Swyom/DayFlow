@@ -24,7 +24,7 @@ const sample = (t: number, counter: number, boot = 7): StepSample => ({ t, count
 const GOAL = 8000;
 
 describe('profile form', () => {
-  const place: ProfileLocation = { label: 'Bhubaneswar', latitude: null, longitude: null, source: 'manual' };
+  const place: ProfileLocation = { label: 'Bhubaneswar', source: 'manual' };
   const complete = { fullName: '  Asha   Patnaik ', email: ' Asha@Example.com', mobile: '+91 98765-43210', age: '29', location: place };
 
   it('accepts a complete form and cleans the values', () => {

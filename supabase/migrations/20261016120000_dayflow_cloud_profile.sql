@@ -44,28 +44,29 @@ create table if not exists public.profiles (
   email            text not null check (char_length(email) <= 254 and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]{2,}$'),
   mobile           text not null check (mobile ~ '^\+?[0-9]{7,15}$'),
   age              smallint not null check (age between 13 and 120),
+  -- Only the city/region label is stored. Detected locations are reverse-geocoded on the
+  -- device and the GPS coordinates are discarded (data minimisation).
   location_label   text not null check (char_length(btrim(location_label)) between 2 and 120),
-  latitude         double precision check (latitude between -90 and 90),
-  longitude        double precision check (longitude between -180 and 180),
   location_source  text not null check (location_source in ('gps', 'manual')),
   avatar_path      text check (avatar_path is null or avatar_path like id::text || '/%'),
   step_goal        integer not null default 8000 check (step_goal between 500 and 100000),
   -- When the profile was first created on the device. Never changes after insert.
   registered_at    timestamptz not null default now(),
   created_at       timestamptz not null default now(),
-  updated_at       timestamptz not null default now(),
-  constraint profiles_gps_has_coordinates check (
-    location_source = 'manual' or (latitude is not null and longitude is not null)
-  )
+  updated_at       timestamptz not null default now()
 );
+
+-- Databases created by earlier versions stored GPS coordinates: remove them for good.
+alter table public.profiles drop constraint if exists profiles_gps_has_coordinates;
+alter table public.profiles drop column if exists latitude;
+alter table public.profiles drop column if exists longitude;
 
 comment on table public.profiles is 'DayFlow mandatory user profile (one per auth user, strictly validated).';
 comment on column public.profiles.avatar_path is 'Object path in the private avatars bucket: <user id>/<file>.';
 
 -- ---------------------------------------------------------------------------
--- Deduplicate any existing profile records before creating unique indexes:
--- If earlier development/testing created multiple rows for the same email or name,
--- this keeps the single most recently updated row and removes older duplicate rows.
+-- Emails are unique across profiles (case-insensitive). Names are NOT unique: many people
+-- share a name. Older duplicate emails are removed first, keeping the most recent row.
 -- ---------------------------------------------------------------------------
 
 delete from public.profiles
@@ -81,22 +82,8 @@ where id in (
   where t.rn > 1
 );
 
-delete from public.profiles
-where id in (
-  select id from (
-    select id,
-           row_number() over (
-             partition by lower(btrim(full_name))
-             order by updated_at desc, created_at desc
-           ) as rn
-    from public.profiles
-  ) t
-  where t.rn > 1
-);
-
--- Uniqueness constraints: prevent duplicate email addresses and duplicate names across accounts
 create unique index if not exists profiles_email_unique on public.profiles (lower(email));
-create unique index if not exists profiles_full_name_unique on public.profiles (lower(btrim(full_name)));
+drop index if exists public.profiles_full_name_unique;
 
 -- registered_at comes from the device (the profile may be created offline) but can't be in
 -- the future; registered_at and created_at are write-once after insert.
@@ -196,10 +183,9 @@ revoke all on function public.delete_current_user() from public, anon;
 grant execute on function public.delete_current_user() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- check_profile_conflicts: checks if a full name or email is already taken
--- by another account before/during registration. Returns json { name_taken, email_taken }.
--- SECURITY DEFINER allows checking availability across accounts without exposing
--- any private profile rows (which remain protected by RLS).
+-- check_profile_conflicts: is this email already used by another profile?
+-- Returns json { name_taken: false, email_taken } (name_taken is kept for older app
+-- versions and is always false: names are not unique). Signed-in users only.
 -- ---------------------------------------------------------------------------
 
 create or replace function public.check_profile_conflicts(
@@ -213,19 +199,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  clean_name text := lower(btrim(coalesce(check_name, '')));
   clean_email text := lower(btrim(coalesce(check_email, '')));
-  has_name boolean := false;
   has_email boolean := false;
 begin
-  if clean_name <> '' then
-    select exists (
-      select 1 from public.profiles
-      where lower(btrim(full_name)) = clean_name
-        and (exclude_user_id is null or id <> exclude_user_id)
-    ) into has_name;
+  if auth.uid() is null then
+    raise exception 'not signed in' using errcode = '42501';
   end if;
-
   if clean_email <> '' then
     select exists (
       select 1 from public.profiles
@@ -233,13 +212,12 @@ begin
         and (exclude_user_id is null or id <> exclude_user_id)
     ) into has_email;
   end if;
-
-  return jsonb_build_object('name_taken', has_name, 'email_taken', has_email);
+  return jsonb_build_object('name_taken', false, 'email_taken', has_email);
 end;
 $$;
 
-revoke all on function public.check_profile_conflicts(text, text, uuid) from public;
-grant execute on function public.check_profile_conflicts(text, text, uuid) to authenticated, anon;
+revoke all on function public.check_profile_conflicts(text, text, uuid) from public, anon;
+grant execute on function public.check_profile_conflicts(text, text, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Storage: private `avatars` bucket. Objects live under "<user id>/...".

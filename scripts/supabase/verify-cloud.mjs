@@ -57,8 +57,6 @@ try {
     mobile: '+919876543210',
     age: 30,
     location_label: 'Bhubaneswar, Odisha, India',
-    latitude: 20.29,
-    longitude: 85.82,
     location_source: 'gps',
     avatar_path: null,
     step_goal: 8000,
@@ -99,10 +97,8 @@ try {
   check(!!(await a.from('profiles').upsert({ ...profile, mobile: 'call me' }, { onConflict: 'id' })).error, 'malformed mobile is rejected');
   check(!!(await a.from('profiles').upsert({ ...profile, email: 'not-an-email' }, { onConflict: 'id' })).error, 'malformed email is rejected');
   check(!!(await a.from('profiles').upsert({ ...profile, full_name: '   ' }, { onConflict: 'id' })).error, 'blank full name is rejected');
-  check(
-    !!(await a.from('profiles').upsert({ ...profile, location_source: 'gps', latitude: null, longitude: null }, { onConflict: 'id' })).error,
-    'gps location without coordinates is rejected',
-  );
+  const coords = await a.from('profiles').upsert({ ...profile, latitude: 20.29, longitude: 85.82 }, { onConflict: 'id' });
+  check(!!coords.error, 'GPS coordinates cannot be stored (columns removed)');
 
   // ---- Duplicate Prevention & Conflict Checking -------------------------------------
   const { data: conflictEmail, error: errRpc1 } = await b.rpc('check_profile_conflicts', {
@@ -120,8 +116,12 @@ try {
     check_email: 'unique-email@example.com',
   });
   if (conflictName) {
-    check(conflictName?.name_taken === true && conflictName?.email_taken === false, 'duplicate name is detected via check_profile_conflicts');
+    check(conflictName?.name_taken === false && conflictName?.email_taken === false, 'names are not unique (same name, different email is allowed)');
   }
+  const sameName = await b.from('profiles').upsert({ ...profile, id: idB, full_name: 'RLS Check 2', email: `same-name-${Date.now()}@example.com` }, { onConflict: 'id' });
+  check(!sameName.error, 'a second person with the same name can create a profile', sameName.error?.message);
+  const sameEmail = await b.from('profiles').upsert({ ...profile, id: idB, email: 'RLS-CHECK@example.com' }, { onConflict: 'id' });
+  check(!!sameEmail.error, 'a second profile with the same email is rejected');
 
   const { data: conflictSelf } = await a.rpc('check_profile_conflicts', {
     check_name: 'RLS Check 2',

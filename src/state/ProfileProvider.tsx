@@ -174,18 +174,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const createProfile = useCallback(
     async (input: NewProfile) => {
-      // Validate uniqueness against cloud database if online
-      if (cloud.isCloudConfigured()) {
-        const conflicts = await cloud.checkProfileConflicts(input.fullName, input.email);
-        if (conflicts.emailTaken && conflicts.nameTaken) {
-          throw new cloud.DuplicateProfileError('both', 'This name and email are already registered.');
-        }
-        if (conflicts.emailTaken) {
-          throw new cloud.DuplicateProfileError('email', 'This email address is already in use by another profile.');
-        }
-        if (conflicts.nameTaken) {
-          throw new cloud.DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
-        }
+      // Emails are unique across profiles (names are not: many people share a name).
+      if (cloud.isCloudConfigured() && (await cloud.isEmailTaken(input.email))) {
+        throw new cloud.DuplicateProfileError();
       }
 
       const now = new Date().toISOString();
@@ -227,21 +218,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async (changes: ProfileChanges) => {
       const current = profileRef.current;
       if (!current) return;
-      const targetName = changes.fullName ?? current.fullName;
       const targetEmail = changes.email ?? current.email;
-
-      if (cloud.isCloudConfigured() && (targetName !== current.fullName || targetEmail !== current.email)) {
+      if (cloud.isCloudConfigured() && targetEmail !== current.email) {
         const userId = await cloud.ensureUserId();
-        const conflicts = await cloud.checkProfileConflicts(targetName, targetEmail, userId);
-        if (conflicts.emailTaken && conflicts.nameTaken) {
-          throw new cloud.DuplicateProfileError('both', 'This name and email are already registered.');
-        }
-        if (conflicts.emailTaken) {
-          throw new cloud.DuplicateProfileError('email', 'This email address is already in use by another profile.');
-        }
-        if (conflicts.nameTaken) {
-          throw new cloud.DuplicateProfileError('fullName', 'This name is already registered. Please choose a different name.');
-        }
+        if (await cloud.isEmailTaken(targetEmail, userId)) throw new cloud.DuplicateProfileError();
       }
 
       const updated = { ...current, ...changes, updatedAt: new Date().toISOString() };

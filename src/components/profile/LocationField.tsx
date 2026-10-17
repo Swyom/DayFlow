@@ -47,7 +47,7 @@ export function LocationField({ value, onChange, error, autoDetect = false }: Pr
       if (!mounted.current) return;
       setMode('manual');
       setNote(message);
-      onChange(manualText.trim() ? { label: manualText.trim(), latitude: null, longitude: null, source: 'manual' } : null);
+      onChange(manualText.trim() ? { label: manualText.trim(), source: 'manual' } : null);
     };
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
@@ -57,16 +57,14 @@ export function LocationField({ value, onChange, error, autoDetect = false }: Pr
         Location.getLastKnownPositionAsync(),
       );
       if (!pos) return fallBack('Couldn’t find your location. Please type your city.');
+      // Coordinates are only used here, on the device, to look up the city name. They are
+      // never stored or uploaded: only the city/region label is kept.
       const { latitude, longitude } = pos.coords;
       const [place] = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
       const label = place ? formatPlace([place.city ?? place.subregion ?? place.district, place.region, place.country]) : '';
       if (!mounted.current) return;
-      onChange({
-        label: label || `Near ${latitude.toFixed(3)}, ${longitude.toFixed(3)}`,
-        latitude,
-        longitude,
-        source: 'gps',
-      });
+      if (!label) return fallBack('Couldn’t find a city name for your location. Please type your city.');
+      onChange({ label, source: 'gps' });
       setMode('detected');
     } catch {
       fallBack('Couldn’t detect your location. Please type your city.');
@@ -86,7 +84,7 @@ export function LocationField({ value, onChange, error, autoDetect = false }: Pr
     setNote(null);
     const text = value?.label ?? manualText;
     setManualText(text);
-    onChange(text.trim() ? { label: text.trim(), latitude: null, longitude: null, source: 'manual' } : null);
+    onChange(text.trim() ? { label: text.trim(), source: 'manual' } : null);
   };
 
   if (mode === 'manual') {
@@ -99,7 +97,7 @@ export function LocationField({ value, onChange, error, autoDetect = false }: Pr
           value={manualText}
           onChangeText={(v) => {
             setManualText(v);
-            onChange(v.trim() ? { label: v.trim(), latitude: null, longitude: null, source: 'manual' } : null);
+            onChange(v.trim() ? { label: v.trim(), source: 'manual' } : null);
           }}
           error={error}
           hint={note ?? undefined}
